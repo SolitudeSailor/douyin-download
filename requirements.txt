@@ -1,0 +1,24 @@
+# 抖音视频下载器 —— 运行依赖
+#
+# 安装（注意：本机全局 pip 指向了其他环境，请用绝对路径）：
+#   C:/Users/<你>/.workbuddy/binaries/python/envs/default/Scripts/pip.exe install -r requirements.txt
+
+# 核心：抖音签名、接口与下载器（会自动带入 httpx/gmssl/PyExecJS/pydantic 等）
+f2==0.0.1.7
+
+# Web 界面
+flask==3.1.3
+
+# 配置文件读写
+pyyaml==6.0.2
+
+# 桌面窗口（Windows；其他平台继续使用系统浏览器）
+pywebview==6.2.1; sys_platform == "win32"
+
+# 自动登录直接调用 CDP WebSocket，显式声明而不依赖传递安装
+websockets==12.0
+
+# 说明：
+# - f2 内部依赖 curl_cffi / httpx / gmssl / PyExecJS / cryptography / browser_cookie3 等
+#   无需在此重复声明，pip 会自动解析。
+# - 打包 exe 另需 pyinstaller，见 requirements-dev.txt。

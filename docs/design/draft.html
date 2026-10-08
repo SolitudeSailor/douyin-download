@@ -1,0 +1,1420 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light dark">
+<title>抖音视频下载器</title>
+<script>
+/* 尽早决定主题，避免首屏闪白。
+   ⚠️ 设计稿模式（?theme=）下把主题钉死：无头 Chrome 的
+   prefers-color-scheme 默认是 dark，不钉死的话浅色与深色两张截图会一模一样，
+   极易误判成「改了没生效」。 */
+(function(){
+  try{
+    var forced = new URLSearchParams(location.search).get('theme');
+    if (forced === 'dark' || forced === 'light'){
+      document.documentElement.setAttribute('data-theme', forced);
+      return;
+    }
+    var saved = localStorage.getItem('dyd-theme');
+    var dark = saved ? saved === 'dark'
+                     : window.matchMedia('(prefers-color-scheme: dark)').matches;
+    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+  }catch(e){}
+})();
+</script>
+<style>
+  /* ============================================================
+     Claude 风格设计令牌
+     ============================================================ */
+  :root{
+    color-scheme:light;
+
+    /* 表面 */
+    --bg:#F5F4EE;
+    --surface:#FFFFFF;
+    --surface-2:#FAF9F5;
+    --border:#E6E4DB;
+    --border-2:#D9D7CC;
+    --track:#EDEBE2;
+
+    /* 文字 —— 三级压成「两级内容 + 一级非内容」
+       实测：原 --text-3(#9C9A90) 对 --bg 只有 2.562:1，远低于 AA 的 4.5 */
+    --text:#1C1B18;          /* 主要    17.0:1 */
+    --text-2:#605E56;        /* 次要     5.90:1（原 #6E6C65 = 4.77，已贴线） */
+    --text-3:#717069;        /* 三级     4.51:1（原 2.562 ✗） */
+
+    /* 强调 —— accent 与 accent-solid 分工：
+         accent      品牌色，只落在「非文字承载」处（图标 / 软底 / 焦点环 / 选中）
+         accent-solid 按钮填充，专为承载白字调深 */
+    --accent:#D97757;
+    --accent-hover:#C05F3D;
+    --accent-solid:#AE5730;        /* 白字 4.99:1（原 #D97757 只有 3.12 ✗） */
+    --accent-solid-hover:#964726;  /* 白字 6.51:1（原 #C05F3D 只有 4.25） */
+    --accent-soft:#F7E7DF;
+    --accent-ring:rgba(217,119,87,.16);
+
+    /* 语义色 —— 11px 标签不算法定「大文本」，须过 4.5 */
+    --green:#2F6A47;         /* 5.45:1（原 #3D7A57 = 4.33 ✗） */
+    --green-soft:#E5EFE8;
+    --yellow:#856019;        /* 4.91:1（原 #956B26 = 4.10 ✗） */
+    --yellow-soft:#F7EDDA;
+    --red:#A63A26;           /* 5.27:1（原 #B4442F = 4.50 贴线） */
+    --red-soft:#F8E4DE;
+    --blue:#4A6B85;          /* 4.81:1（原 #5B7B96 = 3.80 ✗） */
+    --blue-soft:#E8EEF2;
+
+    /* 边框 hover 态 —— 非文本，阈值 3.0。
+       必须与文字用的 --text-3 拆开：一个值无法同时满足 4.5 与 3.0 */
+    --border-hover:#8A8880;
+
+    /* 形状 */
+    --radius:14px;
+    --radius-sm:10px;
+    --shadow:0 1px 2px rgba(30,27,20,.05), 0 2px 10px rgba(30,27,20,.035);
+
+    /* 间距刻度 */
+    --sp-1:4px;  --sp-2:8px;  --sp-3:12px;
+    --sp-4:16px; --sp-5:22px; --sp-6:30px;
+
+    /* 布局 */
+    --wrap:1080px;
+    --aside:340px;
+
+    /* 字体：西文/数字在前，中文在后（各自命中自己的字形） */
+    --font-sans:-apple-system,BlinkMacSystemFont,"Segoe UI Variable Text","Segoe UI",
+      Roboto,Inter,"Helvetica Neue","PingFang SC","HarmonyOS Sans SC","MiSans",
+      "Source Han Sans SC","Noto Sans SC","Microsoft YaHei UI","Microsoft YaHei",sans-serif;
+    --font-serif:"Source Han Serif SC","Noto Serif SC","Songti SC","STSong",
+      SimSun,ui-serif,Georgia,"Times New Roman",serif;
+    --font-mono:"JetBrains Mono","Cascadia Mono","Cascadia Code",ui-monospace,
+      "SF Mono",Menlo,Consolas,"Microsoft YaHei UI","Microsoft YaHei",monospace;
+  }
+  html[data-theme="dark"]{
+    color-scheme:dark;
+    --bg:#1F1E1B;
+    --surface:#262521;
+    --surface-2:#2D2C27;
+    --border:#3A3833;
+    --border-2:#4A4842;
+    --track:#35342F;
+    --text:#F1EFE7;
+    --text-2:#A9A79E;        /* 6.91:1 已达标，不动 */
+    --text-3:#9C998F;        /* 5.85:1（原 #7C7A72 = 3.88 ✗） */
+    --accent:#D97757;
+    --accent-hover:#E88A69;
+    --accent-solid:#AE5730;        /* 与浅色同值：品牌色不随主题漂移，白字 4.99:1 */
+    --accent-solid-hover:#B85C34;  /* 白字 4.55:1（原 #E88A69 只有 2.54 ✗） */
+    --accent-soft:rgba(217,119,87,.15);
+    --accent-ring:rgba(217,119,87,.22);
+    --border-hover:#7B7970;        /* 对 bg 3.82 / 对 surface-2 3.21，均过 3.0 */
+    --green:#7CB392;
+    --green-soft:rgba(124,179,146,.14);
+    --yellow:#D6AB61;
+    --yellow-soft:rgba(214,171,97,.14);
+    --red:#E28A74;
+    --red-soft:rgba(226,138,116,.14);
+    --blue:#93B1C8;
+    --blue-soft:rgba(147,177,200,.14);
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 2px 12px rgba(0,0,0,.18);
+  }
+
+  /* ============================================================
+     基础
+     ============================================================ */
+  /* 字重只用两档：650 = 标题 / 强调，500 = 次要 / 说明。
+     原因：--font-sans 实测落到 Noto Sans SC（Win11 自带，变量字体 wght 100–900），
+     550 / 600 / 650 三档在这个字面上视觉差几乎为零 —— 等于没有层级。
+     拉开到 500↔650 才有可辨的对比。
+     注意：不要改回 700。Noto Sans SC 有 900，但标题用 700 会在小字号下发糊。 */
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    background:var(--bg);color:var(--text);
+    font-family:var(--font-sans);
+    font-size:14px;line-height:1.65;
+    -webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility;
+    padding:0 0 40px;
+    transition:background .2s,color .2s;
+  }
+  .wrap{max-width:var(--wrap);margin:0 auto;padding:0 24px;}
+
+  ::selection{background:var(--accent-soft);color:var(--text);}
+  ::-webkit-scrollbar{width:11px;height:11px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+  ::-webkit-scrollbar-thumb{background:var(--border-2);border-radius:8px;
+    border:3px solid var(--bg);}
+  ::-webkit-scrollbar-thumb:hover{background:var(--text-3);}
+
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+
+  /* ============================================================
+     顶栏
+     ============================================================ */
+  header{
+    /* 降级声明必须在前：Chrome / Edge < 111 不认 color-mix，
+       整条 background 会失效 → 只剩 backdrop-filter 的「磨砂但透明」，
+       比纯色更糟 */
+    background:var(--bg);
+    background:color-mix(in srgb,var(--bg) 88%,transparent);
+    -webkit-backdrop-filter:saturate(160%) blur(12px);
+    backdrop-filter:saturate(160%) blur(12px);
+    border-bottom:1px solid var(--border);
+    padding:20px 0 16px;margin-bottom:var(--sp-6);
+    position:sticky;top:0;z-index:20;
+  }
+  header .wrap{display:flex;align-items:center;justify-content:space-between;
+    gap:var(--sp-4);flex-wrap:wrap;}
+  .brand{display:flex;align-items:center;gap:11px;}
+  .mark{display:inline-flex;color:var(--accent);}
+  .mark svg{fill:currentColor;display:block;}
+  h1{font-family:var(--font-serif);font-size:22px;font-weight:650;
+    letter-spacing:-.015em;line-height:1.2;}
+  .sub{font-size:10.5px;color:var(--text-3);letter-spacing:.09em;
+    text-transform:uppercase;margin-top:2px;font-weight:500;}
+  .status{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+  .status-actions{display:flex;gap:8px;align-items:center;}
+
+  .badge{padding:4px 11px;border-radius:999px;font-size:11.5px;font-weight:650;
+    display:inline-flex;align-items:center;gap:6px;white-space:nowrap;
+    letter-spacing:.01em;}
+  .badge::before{content:"";width:6px;height:6px;border-radius:50%;
+    background:currentColor;opacity:.85;flex:none;}
+  .badge.ok{background:var(--green-soft);color:var(--green);}
+  .badge.bad{background:var(--yellow-soft);color:var(--yellow);}
+
+  /* ============================================================
+     布局：窄屏单列（登录→下载→任务），宽屏两栏
+     ============================================================ */
+  .layout{display:grid;gap:20px;align-items:start;}
+
+  @media (min-width:1000px){
+    .layout{
+      grid-template-columns:minmax(0,1fr) var(--aside);
+      grid-template-areas:
+        "dl    login"
+        "tasks tips";
+    }
+    .card--dl   {grid-area:dl;}
+    .card--login{grid-area:login;}
+    .card--tasks{grid-area:tasks;}
+    .card--tips {grid-area:tips;}
+  }
+
+  /* ============================================================
+     卡片
+     ============================================================ */
+  .card{
+    background:var(--surface);border:1px solid var(--border);
+    border-radius:var(--radius);padding:24px;
+    box-shadow:var(--shadow);
+    transition:background .2s,border-color .2s;
+  }
+  .card--login,.card--tips{padding:20px;}
+
+  .card-head{display:flex;align-items:center;justify-content:space-between;
+    gap:var(--sp-3);margin-bottom:var(--sp-5);}
+  .card-head h2{font-size:15px;font-weight:650;letter-spacing:-.005em;
+    display:flex;align-items:center;gap:10px;line-height:1.3;}
+  .ico{width:26px;height:26px;border-radius:8px;flex:none;
+    background:var(--accent-soft);color:var(--accent);
+    display:inline-flex;align-items:center;justify-content:center;}
+  .ico svg{width:15px;height:15px;display:block;fill:none;
+    stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
+
+  /* ============================================================
+     表单
+     ============================================================ */
+  .field{margin-bottom:var(--sp-4);}
+  label{display:block;font-size:12.5px;color:var(--text-2);
+    margin-bottom:7px;font-weight:500;letter-spacing:.01em;}
+  input,textarea,select{
+    width:100%;background:var(--surface-2);border:1px solid var(--border-2);
+    border-radius:var(--radius-sm);padding:11px 13px;color:var(--text);
+    font-size:13.5px;font-family:var(--font-sans);line-height:1.55;
+    outline:none;
+    transition:border-color .15s,box-shadow .15s,background .15s;
+  }
+  input:hover,textarea:hover,select:hover{border-color:var(--border-hover);}
+  input:focus,textarea:focus,select:focus{
+    border-color:var(--accent);background:var(--surface);
+    box-shadow:0 0 0 3.5px var(--accent-ring);
+  }
+  input::placeholder,textarea::placeholder{color:var(--text-3);}
+  textarea{resize:vertical;min-height:96px;}
+  select{cursor:pointer;appearance:none;
+    background-image:linear-gradient(45deg,transparent 50%,var(--text-2) 50%),
+                     linear-gradient(135deg,var(--text-2) 50%,transparent 50%);
+    background-position:calc(100% - 18px) 50%,calc(100% - 13px) 50%;
+    background-size:5px 5px,5px 5px;background-repeat:no-repeat;
+    padding-right:34px;}
+
+  .label-row{display:flex;align-items:center;justify-content:space-between;
+    gap:var(--sp-3);margin-bottom:7px;}
+  .label-row label{margin-bottom:0;}
+
+  .row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+    gap:var(--sp-4);}
+  .hint{font-size:12px;color:var(--text-3);margin-top:6px;line-height:1.7;}
+  .hint strong{color:var(--text-2);font-weight:650;}
+  .hint:last-child{margin-bottom:0;}
+
+  /* 选项区：把「模式 / 条数 / 日期」收进一块次级面板 */
+  .options{
+    background:var(--surface-2);border:1px solid var(--border);
+    border-radius:var(--radius-sm);padding:16px 16px 2px;
+    margin-bottom:var(--sp-4);
+  }
+  .options input,.options select{background:var(--surface);}
+  .options .field{margin-bottom:14px;}
+
+  /* ============================================================
+     按钮
+     ============================================================ */
+  button{
+    background:var(--accent-solid);color:#fff;border:1px solid transparent;
+    border-radius:var(--radius-sm);padding:10px 18px;font-size:13.5px;
+    font-weight:650;cursor:pointer;font-family:inherit;line-height:1.45;
+    white-space:nowrap;
+    transition:background .15s,border-color .15s,color .15s,transform .08s;
+  }
+  button:hover{background:var(--accent-solid-hover);}
+  button:active{transform:scale(.985);}
+  button:disabled{opacity:.45;cursor:not-allowed;transform:none;}
+  button.ghost{background:var(--surface);border-color:var(--border-2);
+    color:var(--text-2);}
+  button.ghost:hover{background:var(--surface);border-color:var(--border-hover);
+    color:var(--text);}
+  button.sm{padding:7px 13px;font-size:12.5px;}
+  button.icon{padding:7px 10px;font-size:13px;line-height:1;
+    display:inline-flex;align-items:center;justify-content:center;}
+  button.icon svg{display:block;}
+  .btn-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
+  /* 登录卡片：主操作独占一行，两个次要操作平分一行 */
+  .card--login .btn-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  .card--login .btn-row #loginBtn{grid-column:1 / -1;}
+  .actions{display:flex;gap:var(--sp-4);flex-wrap:wrap;align-items:center;
+    margin-top:var(--sp-2);}
+
+  .chk{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;
+    color:var(--text-2);cursor:pointer;user-select:none;white-space:nowrap;}
+  .chk input{width:auto;accent-color:var(--accent);cursor:pointer;
+    background:none;border:none;padding:0;}
+
+  /* ============================================================
+     登录状态行
+     ============================================================ */
+  .status-line{
+    background:var(--surface-2);border:1px solid var(--border);
+    border-radius:9px;padding:10px 12px;margin-bottom:var(--sp-4);
+  }
+  .status-line .msg{margin-top:0;}
+
+  /* ============================================================
+     折叠说明
+     ============================================================ */
+  details{border:1px solid var(--border);border-radius:var(--radius-sm);
+    padding:12px 14px;background:var(--surface-2);margin-top:var(--sp-4);}
+  summary{cursor:pointer;font-size:12.5px;font-weight:650;color:var(--text-2);
+    list-style:none;}
+  summary::-webkit-details-marker{display:none;}
+  summary::before{content:"›";display:inline-block;margin-right:8px;
+    color:var(--text-3);transition:transform .18s;font-weight:650;}
+  details[open] summary::before{transform:rotate(90deg);}
+  summary:hover{color:var(--text);}
+  details[open] summary{margin-bottom:10px;}
+  details ol{margin-left:20px;font-size:12.5px;color:var(--text-2);}
+  details ol li{margin-bottom:6px;}
+  details ol li:last-child{margin-bottom:0;}
+  details code{background:var(--accent-soft);padding:2px 6px;border-radius:5px;
+    font-size:11.5px;color:var(--accent);font-family:var(--font-mono);}
+
+  /* ============================================================
+     小贴士
+     ============================================================ */
+  .tips{list-style:none;}
+  .tips li{position:relative;padding-left:17px;font-size:12.5px;
+    line-height:1.7;color:var(--text-2);margin-bottom:11px;}
+  .tips li:last-child{margin-bottom:0;}
+  .tips li::before{content:"";position:absolute;left:2px;top:8px;
+    width:5px;height:5px;border-radius:50%;background:var(--accent);
+    opacity:.55;}
+  .tips strong{color:var(--text);font-weight:650;display:block;
+    font-size:12.5px;margin-bottom:1px;}
+
+  /* ============================================================
+     任务列表
+     ============================================================ */
+  .task{border:1px solid var(--border);border-radius:var(--radius-sm);
+    padding:14px 16px;margin-bottom:10px;background:var(--surface-2);}
+  .task:last-child{margin-bottom:0;}
+  .task-top{display:flex;justify-content:space-between;gap:var(--sp-3);
+    align-items:flex-start;margin-bottom:9px;}
+  .task-name{font-size:13px;font-weight:650;word-break:break-all;
+    line-height:1.5;}
+  .task-meta{font-size:11.5px;color:var(--text-3);margin-top:3px;
+    font-family:var(--font-mono);font-variant-numeric:tabular-nums;
+    font-feature-settings:"tnum" 1;letter-spacing:.02em;}
+  .tag{padding:3px 10px;border-radius:999px;font-size:11px;font-weight:650;
+    white-space:nowrap;flex:none;}
+  .tag.running{background:var(--blue-soft);color:var(--blue);}
+  .tag.done{background:var(--green-soft);color:var(--green);}
+  .tag.failed{background:var(--red-soft);color:var(--red);}
+  /* 用 --text-2 而非 --text-3：--text-3 落在 --track 上只有 4.16，永远过不了 4.5。
+     换 token 解决不了，得换色阶。现为 5.44:1 */
+  .tag.pending{background:var(--track);color:var(--text-2);}
+  .tag.cancelled{background:var(--yellow-soft);color:var(--yellow);}
+
+  .bar{height:5px;background:var(--track);border-radius:3px;overflow:hidden;
+    margin-top:10px;position:relative;}
+  .bar > i{display:block;height:100%;background:var(--accent-solid);
+    border-radius:3px;transition:width .35s ease;width:0;}
+  .bar.done > i{background:var(--green);}
+  .msg{font-size:12px;color:var(--text-2);margin-top:8px;line-height:1.6;}
+  .msg.err{color:var(--red);word-break:break-all;}
+  .msg.warn{color:var(--yellow);}
+  .empty{text-align:center;color:var(--text-3);font-size:12.5px;
+    padding:26px 0;}
+
+  /* ============================================================
+     状态条 —— 前置条件说明（替代「点完才报错」）
+     ============================================================ */
+  .note{
+    display:flex;align-items:center;gap:10px;
+    border-radius:9px;padding:10px 12px;margin-bottom:var(--sp-4);
+    font-size:12.5px;line-height:1.55;
+  }
+  .note > svg{width:15px;height:15px;flex:none;display:block;
+    fill:none;stroke:currentColor;stroke-width:2;
+    stroke-linecap:round;stroke-linejoin:round;}
+  .note b{font-weight:650;}
+  .note .note-body{flex:1;min-width:0;}
+  .note.warn{background:var(--yellow-soft);color:var(--yellow);}
+  .note.ok{background:var(--green-soft);color:var(--green);}
+  /* 嵌在 .note 里的动作：必须清掉 button 的实底继承 */
+  button.note-link{
+    flex:none;background:none;border:none;padding:2px 0;
+    font-size:12.5px;font-weight:650;color:inherit;font-family:inherit;
+    cursor:pointer;text-decoration:underline;
+    text-decoration-thickness:1px;text-underline-offset:2.5px;
+  }
+  button.note-link:hover{background:none;opacity:.72;}
+
+  /* ============================================================
+     步骤序号 —— 表达「先登录、后下载」的顺序，
+     不交换宽屏栏位（避免布局跳动）
+     ============================================================ */
+  .step{
+    width:18px;height:18px;border-radius:50%;flex:none;
+    display:inline-flex;align-items:center;justify-content:center;
+    font-family:var(--font-sans);font-size:11px;font-weight:650;
+    font-variant-numeric:tabular-nums;line-height:1;
+    background:var(--track);color:var(--text-2);
+  }
+  .step.now{background:var(--accent-solid);color:#fff;}
+  .step.done{background:var(--green-soft);color:var(--green);}
+  /* 紧贴后面的图标，让「序号 + 图标」读成一个整体 */
+  .card-head h2 .step{margin-right:-4px;}
+
+  /* ============================================================
+     按钮的「前置条件未满足」态
+     用 aria-disabled 而非原生 disabled —— 原生 disabled 不可聚焦、
+     无法 hover，用户点不动也不知道为什么
+     ============================================================ */
+  button[aria-disabled="true"]{
+    background:var(--surface-2);border-color:var(--border-2);
+    color:var(--text-2);cursor:not-allowed;
+  }
+  button[aria-disabled="true"]:hover{
+    background:var(--surface-2);border-color:var(--border-2);color:var(--text-2);
+  }
+  .btn-reason{
+    display:inline-flex;align-items:center;gap:6px;
+    font-size:12px;color:var(--text-2);
+  }
+  .btn-reason svg{width:13px;height:13px;flex:none;fill:none;
+    stroke:currentColor;stroke-width:2;stroke-linecap:round;}
+
+  /* ============================================================
+     进度：indeterminate 态
+     触发条件是 !(total > current)，不是 total <= 0 ——
+     批量「不限条数」时后端用 index 当 total，会让 total === current，
+     pct 恒 100%，一边「下载中」一边满格，比恒 0 更误导
+     ============================================================ */
+  .bar.indet > i{
+    width:38%;transition:none;
+    animation:dyd-slide 1.15s cubic-bezier(.45,.05,.55,.95) infinite;
+  }
+  @keyframes dyd-slide{
+    0%  {transform:translateX(-105%);}
+    100%{transform:translateX(268%);}
+  }
+  /* 登录条同理：原来 <i> 无宽度、无动画，显示时是静止空条，也像卡住 */
+  #loginBar{display:none;}
+  #loginBar.is-live{display:block;}
+  #loginBar.is-live > i{
+    width:38%;transition:none;
+    animation:dyd-slide 1.15s cubic-bezier(.45,.05,.55,.95) infinite;
+  }
+  @media (prefers-reduced-motion:reduce){
+    .bar.indet > i,#loginBar.is-live > i{animation-duration:3s;}
+  }
+  /* 设计稿模式：把流动动画停在固定帧，保证每次出图完全一致 */
+  html[data-demo] .bar.indet > i,
+  html[data-demo] #loginBar.is-live > i{
+    animation-play-state:paused;animation-delay:-.42s;
+  }
+  html[data-demo] .badge.pending::before{animation:none;opacity:.6;}
+
+  /* 单视频任务：分母是写死的 3，画百分比是假进度 —— 改画阶段点 */
+  .stages{display:flex;align-items:center;gap:15px;margin-top:12px;
+    flex-wrap:wrap;}
+  .stages .st{display:inline-flex;align-items:center;gap:6px;}
+  .stages .dot{width:7px;height:7px;border-radius:50%;flex:none;
+    background:var(--track);transition:background .2s,transform .2s;}
+  .stages .dot.on{background:var(--accent-solid);transform:scale(1.2);}
+  .stages .dot.ok{background:var(--green);}
+  .stages .lbl{font-size:11.5px;color:var(--text-2);font-weight:500;}
+  .stages .st.ok .lbl{color:var(--text-3);}
+
+  /* 任务卡内布局：左侧可压缩、右侧标签与操作不换行 */
+  .task-top > .t-main{min-width:0;}
+  .t-side{display:flex;align-items:center;gap:8px;flex:none;}
+
+  /* 数字统一等宽，避免每帧跳宽 */
+  .num{font-family:var(--font-mono);font-variant-numeric:tabular-nums;
+    font-feature-settings:"tnum" 1;}
+
+  /* ============================================================
+     任务列表滚动容器
+     后端最多回 50 条，不封顶会把这个页面撑得很长，
+     而顶栏是 sticky 的，会盖住内容
+     ============================================================ */
+  .task-scroll{
+    max-height:432px;overflow-y:auto;overscroll-behavior:contain;
+    padding-right:6px;margin-right:-6px;
+  }
+
+  /* 空态升级：原来只有一行灰字，整张卡片是空的 */
+  .empty-lg{padding:34px 0 30px;}
+  .empty-lg svg{width:30px;height:30px;margin:0 auto 12px;display:block;
+    fill:none;stroke:var(--text-3);stroke-width:1.5;
+    stroke-linecap:round;stroke-linejoin:round;}
+  .empty-lg b{display:block;font-size:13px;color:var(--text);
+    font-weight:650;margin-bottom:5px;}
+  .empty-lg span{display:block;line-height:1.75;}
+
+  /* 破坏性操作的收口：从顶栏搬到卡片页脚，红色文字按钮 */
+  .card-foot{
+    margin-top:var(--sp-4);padding-top:var(--sp-4);
+    border-top:1px solid var(--border);
+    display:flex;align-items:center;justify-content:space-between;
+    gap:var(--sp-3);flex-wrap:wrap;
+  }
+  button.danger-link{
+    background:none;border:none;padding:0;cursor:pointer;
+    font-family:inherit;font-size:12px;font-weight:500;color:var(--red);
+    text-decoration:underline;
+    text-decoration-thickness:1px;text-underline-offset:2.5px;
+  }
+  button.danger-link:hover{background:none;color:var(--red);opacity:.75;}
+
+  /* 顶栏状态徽标：补 pending 态。
+     原来初始 class 只有 "badge"（无 .ok/.bad），圆点 background:currentColor
+     会继承 --text（近黑）→ 一个语义不明的黑点 */
+  .badge.pending{background:var(--track);color:var(--text-2);}
+  .badge.pending::before{animation:dyd-pulse 1.4s ease-in-out infinite;}
+  @keyframes dyd-pulse{0%,100%{opacity:.3;}50%{opacity:.95;}}
+
+  /* ============================================================
+     确认弹层 —— 替代原生 confirm（风格割裂 + 内嵌浏览器会拦）
+     ============================================================ */
+  .modal-mask{
+    position:fixed;inset:0;z-index:200;padding:24px;
+    background:rgba(28,27,24,.44);
+    -webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);
+    display:flex;align-items:center;justify-content:center;
+    opacity:0;pointer-events:none;transition:opacity .18s;
+  }
+  .modal-mask.show{opacity:1;pointer-events:auto;}
+  .modal{
+    width:100%;max-width:404px;background:var(--surface);
+    border:1px solid var(--border);border-radius:var(--radius);
+    padding:22px;
+    box-shadow:0 18px 50px rgba(30,27,20,.26),0 3px 10px rgba(30,27,20,.1);
+    transform:translateY(9px) scale(.985);
+    transition:transform .2s cubic-bezier(.22,.61,.36,1);
+  }
+  html[data-theme="dark"] .modal{
+    box-shadow:0 18px 50px rgba(0,0,0,.6),0 3px 10px rgba(0,0,0,.4);}
+  .modal-mask.show .modal{transform:none;}
+  .modal h3{font-size:14.5px;font-weight:650;margin-bottom:9px;
+    display:flex;align-items:center;gap:9px;}
+  .modal h3 .ico{background:var(--red-soft);color:var(--red);}
+  .modal p{font-size:12.5px;color:var(--text-2);line-height:1.75;}
+  .modal .btn-row{margin-top:19px;justify-content:flex-end;}
+  button.danger{background:var(--red);border-color:transparent;color:#fff;}
+  button.danger:hover{background:var(--red);filter:brightness(.9);}
+
+  /* 引导视线用：卡片闪一圈强调环 */
+  @keyframes dyd-flash{
+    0%  {box-shadow:0 0 0 0 var(--accent-ring),var(--shadow);}
+    100%{box-shadow:0 0 0 10px rgba(217,119,87,0),var(--shadow);}
+  }
+  .card.flash{animation:dyd-flash .85s ease-out 1;}
+
+  /* 设计稿模式：让 4 条演示任务全部可见，不被滚动容器裁掉 */
+  html[data-demo] .task-scroll{max-height:none;}
+
+  /* ============================================================
+     页脚 / Toast
+     ============================================================ */
+  .foot{max-width:var(--wrap);margin:var(--sp-5) auto 0;padding:0 24px;
+    font-size:11.5px;color:var(--text-3);text-align:center;
+    letter-spacing:.01em;}
+
+  #toast{
+    position:fixed;bottom:28px;left:50%;
+    transform:translateX(-50%) translateY(90px);
+    background:var(--surface);border:1px solid var(--border);
+    border-radius:12px;padding:12px 20px;font-size:13px;
+    opacity:0;transition:all .3s cubic-bezier(.22,.61,.36,1);
+    pointer-events:none;z-index:99;max-width:80vw;
+    box-shadow:0 8px 28px rgba(30,27,20,.14),0 2px 6px rgba(30,27,20,.06);
+  }
+  html[data-theme="dark"] #toast{
+    box-shadow:0 8px 28px rgba(0,0,0,.45),0 2px 6px rgba(0,0,0,.3);}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  #toast.err{border-color:var(--red);color:var(--red);}
+  #toast.ok{border-color:var(--green);color:var(--green);}
+
+  /* ============================================================
+     窄屏微调
+     ============================================================ */
+  @media (max-width:640px){
+    .wrap{padding:0 16px;}
+    header{padding:15px 0 13px;margin-bottom:var(--sp-5);}
+    h1{font-size:19px;}
+    .sub{display:none;}
+    .card{padding:18px;}
+    .card--login,.card--tips{padding:16px;}
+    .foot{padding:0 16px;}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="brand">
+      <span class="mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="22" height="22">
+          <path d="M12 2C12.8 7.2 16.8 11.2 22 12C16.8 12.8 12.8 16.8 12 22C11.2 16.8 7.2 12.8 2 12C7.2 11.2 11.2 7.2 12 2Z"/>
+        </svg>
+      </span>
+      <div>
+        <h1>抖音视频下载器</h1>
+        <p class="sub">Douyin Video Downloader</p>
+      </div>
+    </div>
+    <div class="status">
+      <span class="badge pending" id="cookieBadge"
+            role="status" aria-live="polite">检查中…</span>
+      <div class="status-actions">
+        <button class="ghost sm" onclick="openFolder()">打开下载目录</button>
+        <button class="ghost sm icon" id="themeBtn" onclick="toggleTheme()"
+                title="切换主题" aria-label="切换主题">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.6A8.6 8.6 0 1 1 9.4 4a6.9 6.9 0 0 0 10.6 10.6z"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="layout">
+
+    <!-- ============ 登录（宽屏落右栏，窄屏排最前） ============ -->
+    <section class="card card--login">
+      <div class="card-head">
+        <h2>
+          <span class="step now" id="loginStep" aria-hidden="true">1</span>
+          <span class="ico" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><rect x="4" y="10.5" width="16" height="10" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/><circle cx="12" cy="15.5" r="1.3"/></svg>
+          </span>
+          登录抖音
+        </h2>
+      </div>
+
+      <p class="hint" style="margin-bottom:14px">
+        点下面的按钮会打开一个<strong>专属浏览器窗口</strong>，它与你的日常浏览器
+        <strong>完全隔离</strong>，不读取也不影响你现有的账号、书签和历史记录。
+        在窗口里扫码即可，程序会自动接住登录态。<br>
+        登录一次长期有效，之后<strong>直接粘贴网址就能下载</strong>。
+      </p>
+
+      <div class="status-line">
+        <div class="msg" id="loginStatus" role="status" aria-live="polite">正在检查登录状态…</div>
+      </div>
+
+      <div class="btn-row">
+        <button id="loginBtn" onclick="startLogin(true)">打开登录窗口</button>
+        <button class="ghost sm" id="syncBtn" onclick="startLogin(false)">同步登录态</button>
+        <button class="ghost sm" id="forgetBtn" onclick="forgetLogin()">退出登录</button>
+      </div>
+
+      <div class="bar" id="loginBar"><i></i></div>
+
+      <details>
+        <summary>看不到窗口 / 提示超时？</summary>
+        <ol>
+          <li>确认已安装 <strong>Chrome</strong> 或 <strong>Edge</strong>；</li>
+          <li>若提示通道超时，可能是上次的登录窗口没关干净 ——
+              关闭所有由本程序打开的浏览器窗口后重试；</li>
+          <li>登录窗口里如出现「不安全」提示属正常（本地调试端口），可忽略；</li>
+          <li>长时间未操作会超时（180 秒），重新点按钮即可。</li>
+        </ol>
+      </details>
+    </section>
+
+    <!-- ============ 下载（主操作） ============ -->
+    <section class="card card--dl">
+      <div class="card-head">
+        <h2>
+          <span class="step" id="dlStep" aria-hidden="true">2</span>
+          <span class="ico" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M12 3.5v11"/><path d="M7.5 10.5 12 15l4.5-4.5"/><path d="M4.5 18.5h15"/></svg>
+          </span>
+          开始下载
+        </h2>
+      </div>
+
+      <!-- 前置条件就地说明，替代「点完才弹错、再滚到登录卡片」 -->
+      <div class="note warn" id="dlNote">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9.2"/><path d="M12 7.6v5.6"/><path d="M12 16.3v.1"/></svg>
+        <div class="note-body"><b>需要先完成登录</b>，登录后这里自动解锁。</div>
+        <button class="note-link" onclick="scrollToLogin()">去登录</button>
+      </div>
+
+      <div class="field">
+        <div class="label-row">
+          <label for="urlInput">作品链接</label>
+          <button class="ghost sm" onclick="parseLink()">仅解析链接</button>
+        </div>
+        <textarea id="urlInput" oninput="syncDlCard()" placeholder="粘贴分享文本或网址，例如：&#10;7.43 复制打开抖音…… https://v.douyin.com/xxxx/&#10;https://www.douyin.com/video/7xxxxxxxxxx"></textarea>
+        <p class="hint">支持分享文本 / 短链 / 完整链接 / 带 modal_id 的页面地址</p>
+      </div>
+
+      <div class="options">
+        <div class="row">
+          <div class="field">
+            <label for="mode">下载模式</label>
+            <select id="mode" onchange="onModeChange()">
+              <option value="one">单个作品</option>
+              <option value="post">用户主页（批量）</option>
+            </select>
+          </div>
+          <div class="field" id="maxCountsField" style="display:none">
+            <label for="maxCounts">最多下载条数</label>
+            <input type="number" id="maxCounts" value="20" min="0" placeholder="0 = 不限">
+          </div>
+        </div>
+        <div class="row" id="dateRow" style="display:none">
+          <div class="field">
+            <label for="dateStart">起始日期（可选）</label>
+            <input type="date" id="dateStart">
+          </div>
+          <div class="field">
+            <label for="dateEnd">结束日期（可选）</label>
+            <input type="date" id="dateEnd">
+          </div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="dlBtn" onclick="startDownload()" aria-disabled="true">开始下载</button>
+        <span class="btn-reason" id="dlReason">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9.2"/><path d="M12 7.6v5.6"/><path d="M12 16.3v.1"/></svg>
+          请先粘贴作品链接
+        </span>
+        <label class="chk" title="忽略下载记录，即使文件还在也重新下载一遍">
+          <input type="checkbox" id="forceDl"> 强制重新下载
+        </label>
+      </div>
+    </section>
+
+    <!-- ============ 任务进度（左栏第二行） ============ -->
+    <section class="card card--tasks">
+      <div class="card-head">
+        <h2>
+          <span class="ico" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M4.5 7h15"/><path d="M4.5 12h15"/><path d="M4.5 17h9"/></svg>
+          </span>
+          任务进度
+        </h2>
+      </div>
+      <div class="task-scroll">
+        <!-- 刻意不加 aria-live：这个列表每 1.5s 整体重建一次，
+             挂 live 会让读屏器每 1.5 秒念一遍全部任务。
+             有意义的变更走 #toast 播报。 -->
+        <div id="taskList">
+          <div class="empty empty-lg">
+            <svg viewBox="0 0 24 24"><path d="M12 3.5v11"/><path d="M7.5 10.5 12 15l4.5-4.5"/><path d="M4.5 18.5h15"/></svg>
+            <b>还没有任务</b>
+            <span>在上面粘贴作品链接，点「开始下载」即可</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card-foot">
+        <p class="hint">下载记录只存在本机，用来跳过已经下过的作品</p>
+        <button class="danger-link" onclick="askResetHistory()"
+                title="清空后，已下载的作品会重新校验一遍">清空下载记录</button>
+      </div>
+    </section>
+
+    <!-- ============ 使用小贴士（右栏第二行） ============ -->
+    <section class="card card--tips">
+      <div class="card-head">
+        <h2>
+          <span class="ico" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M12 3.5a5.5 5.5 0 0 0-3.3 9.9c.5.4.8 1 .8 1.6v.5h5v-.5c0-.6.3-1.2.8-1.6A5.5 5.5 0 0 0 12 3.5Z"/><path d="M10 18.5h4"/></svg>
+          </span>
+          使用小贴士
+        </h2>
+      </div>
+      <ul class="tips">
+        <li><strong>增量下载</strong>下过的作品自动跳过；文件被删掉时会自动补下。</li>
+        <li><strong>批量模式</strong>粘贴用户主页链接，按条数和日期区间筛选。</li>
+        <li><strong>文件命名</strong>日期_作者_文案，并按作者分目录存放。</li>
+        <li><strong>数据本地</strong>登录态与视频都只留在你自己电脑上。</li>
+      </ul>
+    </section>
+
+  </div>
+</main>
+
+<footer class="foot">本地运行 · 所有请求与文件都只在这台电脑上完成</footer>
+
+<div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+
+<!-- 确认弹层 —— 替代原生 confirm：风格统一，且不会被内嵌浏览器拦掉 -->
+<div class="modal-mask" id="modalMask" role="dialog" aria-modal="true"
+     aria-labelledby="modalTitleText" aria-hidden="true">
+  <div class="modal">
+    <h3>
+      <span class="ico" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M12 3.6 22 20H2L12 3.6Z"/><path d="M12 10v4.4"/><path d="M12 17.3v.1"/></svg>
+      </span>
+      <span id="modalTitleText">确认操作</span>
+    </h3>
+    <p id="modalBody"></p>
+    <div class="btn-row">
+      <button class="ghost sm" onclick="closeModal(false)">取消</button>
+      <button class="sm danger" id="modalOk" onclick="closeModal(true)">确定</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let pollTimer = null;
+// 最近一次拉到的任务列表（beforeunload 里要用它判断「有没有任务在跑」）
+let lastTasks = [];
+
+function toast(msg, kind){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'show ' + (kind || '');
+  clearTimeout(t._h);
+  t._h = setTimeout(()=>{ t.className=''; }, 4200);
+}
+
+/* ============================================================
+   设计稿演示模式 —— 正式代码里没有这一段
+   ------------------------------------------------------------
+   ?state=idle|running 驱动，所有接口调用在此被拦截并返回假数据。
+   关键在于：渲染仍然走真实的 refreshTasks() / setCookieBadge()，
+   所以出图能证明「这套渲染逻辑跑得通」，而不是画了一张静态图。
+   ============================================================ */
+const QS = new URLSearchParams(location.search);
+const DEMO_STATE = QS.get('state') || 'off';
+const DEMO = DEMO_STATE !== 'off';
+if (DEMO) document.documentElement.setAttribute('data-demo','');
+
+/* 出图时把链接填好，让提交按钮处于「可用」态而不是「待输入」态 */
+if (DEMO && DEMO_STATE === 'running'){
+  document.getElementById('urlInput').value = 'https://v.douyin.com/iRNBho6u/';
+}
+
+/* 出图自检探针：把实测值写进 <title>，用 --dump-dom 读回来。
+   不靠肉眼判断「浅色/深色到底有没有生效」。 */
+if (DEMO){
+  setTimeout(() => {
+    const de  = document.documentElement;
+    const bar = document.querySelector('.bar.indet > i');
+    const pnd = document.querySelector('.badge.pending');
+    document.title =
+      'H=' + de.scrollHeight +
+      ' | theme=' + de.getAttribute('data-theme') +
+      ' | bodyBG=' + getComputedStyle(document.body).backgroundColor +
+      ' | cardBG=' + (document.querySelector('.card') ? getComputedStyle(document.querySelector('.card')).backgroundColor : 'NA') +
+      ' | btnBG=' + (document.getElementById('dlBtn') ? getComputedStyle(document.getElementById('dlBtn')).backgroundColor : 'NA') +
+      ' | t3=' + (document.querySelector('.hint') ? getComputedStyle(document.querySelector('.hint')).color : 'NA') +
+      ' | indet=' + (bar ? getComputedStyle(bar).animationName + '/' + getComputedStyle(bar).animationPlayState : 'none') +
+      ' | badge=' + (pnd ? getComputedStyle(pnd).backgroundColor : 'settled') +
+      ' | cols=' + getComputedStyle(document.querySelector('.layout')).gridTemplateColumns +
+      ' | aDis=' + (document.getElementById('dlBtn') ? document.getElementById('dlBtn').getAttribute('aria-disabled') : 'NA') +
+      ' | h1=' + (document.querySelector('h1') ? getComputedStyle(document.querySelector('h1')).fontFamily.split(',')[0].replace(/"/g,'') : 'NA') +
+      ' | pendTag=' + (document.querySelector('.tag.pending') ? getComputedStyle(document.querySelector('.tag.pending')).color : 'none') +
+      ' | pendTagBG=' + (document.querySelector('.tag.pending') ? getComputedStyle(document.querySelector('.tag.pending')).backgroundColor : 'none') +
+      ' | blueTag=' + (document.querySelector('.tag.running') ? getComputedStyle(document.querySelector('.tag.running')).color + ' on ' + getComputedStyle(document.querySelector('.tag.running')).backgroundColor : 'none');
+  }, 350);
+}
+
+const DEMO_TASKS = {
+  idle: [],
+  running: [
+    // ① 有明确总数的批量：确定性进度 + 取消按钮
+    { id:'t1', kind:'post', status:'running', current:7, total:20,
+      target:'https://www.douyin.com/user/MS4wLjABAAAA7xK2mQpL',
+      message:'正在下载第 7 条 · 城市清晨的随手拍' },
+    // ② 「不限条数」的批量：后端用 index 当 total → total === current。
+    //    这就是原来 pct 恒 100% 的场景，现在走 indeterminate
+    { id:'t2', kind:'post', status:'running', current:12, total:12,
+      target:'https://www.douyin.com/user/MS4wLjABAAAA1pQ8',
+      message:'不限条数，正在持续下载…' },
+    // ③ 单个作品：分母写死为 3，画百分比是假进度 → 阶段点
+    { id:'t3', kind:'one', status:'running', current:2, total:3,
+      target:'https://www.douyin.com/video/7412345678901234567',
+      message:'正在写入文件…' },
+    // ④ 排队中：标签原来是 --text-3 落在 --track 上，只有 2.364:1（全站最差），
+    //    已换成 --text-2。进度条保持空轨道 —— 它确实什么都还没干
+    { id:'t4', kind:'post', status:'pending', current:0, total:0,
+      target:'https://www.douyin.com/user/MS4wLjABAAAA5tV7',
+      message:'排队中，等待上一个任务结束' },
+    // ⑤ 完成
+    { id:'t5', kind:'post', status:'done', current:12, total:12,
+      target:'https://www.douyin.com/user/MS4wLjABAAAA9zR4',
+      message:'全部完成',
+      result:{ download_count:10, skipped:['a','b'], failed:[] } },
+  ],
+};
+
+const DEMO_CONFIG = {
+  idle:    { cookie_set:false, browser:'Edge', default_max_counts:20 },
+  running: { cookie_set:true,  browser:'Edge', default_max_counts:20 },
+};
+
+async function api(path, opts){
+  if (DEMO){
+    if (path === '/api/config')       return {ok:true,status:200,data:DEMO_CONFIG[DEMO_STATE] || DEMO_CONFIG.running};
+    if (path === '/api/tasks')        return {ok:true,status:200,data:{tasks:DEMO_TASKS[DEMO_STATE] || []}};
+    if (path === '/api/login/status') return {ok:true,status:200,data:{status:'idle',message:''}};
+    return {ok:true,status:200,data:{ok:true}};
+  }
+  const r = await fetch(path, Object.assign({
+    headers: {'Content-Type':'application/json'}
+  }, opts || {}));
+  let data = {};
+  try { data = await r.json(); } catch(e){}
+  return { ok: r.ok, status: r.status, data };
+}
+
+/* ---------- 主题 ---------- */
+const ICON_MOON = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.6A8.6 8.6 0 1 1 9.4 4a6.9 6.9 0 0 0 10.6 10.6z"/></svg>';
+const ICON_SUN  = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="4.1"/><path d="M12 2.6v2.3M12 19.1v2.3M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M2.6 12h2.3M19.1 12h2.3M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6"/></svg>';
+
+function syncThemeBtn(){
+  const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const b = document.getElementById('themeBtn');
+  if (!b) return;
+  b.innerHTML = dark ? ICON_SUN : ICON_MOON;
+  b.title = dark ? '切换到浅色主题' : '切换到深色主题';
+}
+function toggleTheme(){
+  const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const next = dark ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  try { localStorage.setItem('dyd-theme', next); } catch(e){}
+  syncThemeBtn();
+}
+
+/* ---------- 配置 ---------- */
+/* cookie_set 只表示「配置里有 cookie」，不代表 cookie 还有效 ——
+   真值只有 /api/download 返回的 need_login 才知道。
+   所以它只能用来做「前置提示」，不能用来把界面锁死，
+   startDownload() 里的 need_login 反应式分支必须保留。 */
+let COOKIE_SET = false;
+
+async function loadConfig(){
+  const { data } = await api('/api/config');
+  COOKIE_SET = !!data.cookie_set;
+  setCookieBadge(COOKIE_SET);
+  if (data.default_max_counts != null){
+    document.getElementById('maxCounts').value = data.default_max_counts;
+  }
+  if (COOKIE_SET){
+    setLoginStatus(lastSeen + (lastSeen ? '　' : '') + '✅ 已登录，可直接开始下载', '');
+  } else {
+    setLoginStatus('尚未登录，请点「打开登录窗口」', '');
+  }
+  if (data.browser){
+    document.getElementById('loginBtn').textContent = '打开登录窗口（' + data.browser + '）';
+  }
+  syncDlCard();
+}
+
+const WARN_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9.2"/><path d="M12 7.6v5.6"/><path d="M12 16.3v.1"/></svg>';
+const OK_ICON   = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.5 9.5 17.5 19.5 6.5"/></svg>';
+
+/* 下载卡片随登录态与输入实时更新：
+   前置条件就地说明，替代「点完才弹错、再滚到登录卡片」 */
+function syncDlCard(){
+  const url = (document.getElementById('urlInput').value || '').trim();
+  const note = document.getElementById('dlNote');
+  const s1 = document.getElementById('loginStep');
+  const s2 = document.getElementById('dlStep');
+  const reason = document.getElementById('dlReason');
+  const btn = document.getElementById('dlBtn');
+
+  if (note){
+    note.className = 'note ' + (COOKIE_SET ? 'ok' : 'warn');
+    note.innerHTML = COOKIE_SET
+      ? OK_ICON + '<div class="note-body">已登录，可以直接开始下载。</div>'
+      : WARN_ICON + '<div class="note-body"><b>需要先完成登录</b>，登录后这里自动解锁。</div>'
+        + '<button class="note-link" onclick="scrollToLogin()">去登录</button>';
+  }
+  if (s1){
+    s1.className = COOKIE_SET ? 'step done' : 'step now';
+    s1.textContent = COOKIE_SET ? '✓' : '1';
+  }
+  if (s2){
+    s2.className = COOKIE_SET ? 'step now' : 'step';
+    s2.textContent = '2';
+  }
+  if (btn && btn.disabled) return;   // 请求飞行中，按钮状态由 startDownload() 接管
+
+  /* 用 aria-disabled 而不是原生 disabled：
+     原生 disabled 不可聚焦、无法 hover，用户点不动也不知道为什么。 */
+  if (btn) btn.setAttribute('aria-disabled', (!COOKIE_SET || !url) ? 'true' : 'false');
+  if (reason){
+    let txt = '';
+    if (!COOKIE_SET) txt = '需先完成登录';
+    else if (!url)   txt = '请先粘贴作品链接';
+    reason.innerHTML = txt ? WARN_ICON + txt : '';
+    reason.style.display = txt ? '' : 'none';
+  }
+}
+
+function setCookieBadge(isSet){
+  const b = document.getElementById('cookieBadge');
+  if (isSet){ b.textContent = '已登录'; b.className = 'badge ok'; }
+  else { b.textContent = '未登录'; b.className = 'badge bad'; }
+  COOKIE_SET = !!isSet;
+  syncDlCard();
+}
+
+/* 「去登录」：滚到登录卡片并闪一下，把视线带过去 */
+function scrollToLogin(){
+  const card = document.querySelector('.card--login');
+  if (!card) return;
+  card.scrollIntoView({behavior:'smooth', block:'center'});
+  card.classList.remove('flash');
+  void card.offsetWidth;          // 强制回流，让动画能重播
+  card.classList.add('flash');
+  setTimeout(()=>card.classList.remove('flash'), 900);
+}
+
+/* ---------- 登录 ---------- */
+let loginTimer = null;
+let lastSeen = '';
+
+function setLoginStatus(text, kind){
+  const el = document.getElementById('loginStatus');
+  el.textContent = text || '';
+  el.className = 'msg' + (kind ? ' ' + kind : '');
+}
+
+function setLoginBusy(busy, showBar){
+  document.getElementById('loginBtn').disabled = busy;
+  document.getElementById('syncBtn').disabled = busy;
+  document.getElementById('loginBar').classList.toggle('is-live', !!(busy && showBar));
+}
+
+async function startLogin(interactive){
+  const { ok, status, data } = await api('/api/login/start', {
+    method:'POST', body: JSON.stringify({interactive: !!interactive})
+  });
+  if (!ok && status !== 202){
+    toast(data.message || '启动失败', 'err');
+    setLoginStatus(data.message || '启动失败', 'err');
+    return;
+  }
+  setLoginBusy(true, true);
+  setLoginStatus(interactive
+    ? '正在打开浏览器窗口，请在窗口里登录抖音…'
+    : '正在同步登录态，请稍候…');
+  pollLogin();
+}
+
+async function pollLogin(){
+  if (loginTimer) return;
+  const tick = async () => {
+    const { data } = await api('/api/login/status');
+    const st = data.status || 'idle';
+    const busy = (st === 'starting' || st === 'waiting_login' || st === 'reading');
+    if (data.message) lastSeen = data.message;
+    setLoginStatus(data.message || '', st === 'failed' ? 'err' : '');
+    setLoginBusy(busy, true);
+
+    if (busy) return;
+
+    clearInterval(loginTimer); loginTimer = null;
+
+    if (st === 'done'){
+      setCookieBadge(true);
+      setLoginStatus('✅ ' + (data.message || '登录成功') + '　可以开始下载了', '');
+      toast('登录成功', 'ok');
+    } else if (st === 'failed'){
+      setCookieBadge(false);
+      toast(data.message || '登录未完成', 'err');
+    }
+  };
+  loginTimer = setInterval(tick, 1200);
+  tick();
+}
+
+async function forgetLogin(){
+  const yes = await askConfirm({
+    title: '退出登录',
+    body: '退出后需要重新扫码登录。已经下载好的文件不受影响。',
+    okText: '退出登录',
+  });
+  if (!yes) return;
+  const { data } = await api('/api/login/forget', {method:'POST'});
+  if (data.ok){
+    toast('已退出登录', 'ok');
+    setCookieBadge(false);
+    lastSeen = '';
+    setLoginStatus('尚未登录，请点「打开登录窗口」', '');
+  } else {
+    toast(data.message || '操作失败', 'err');
+  }
+}
+
+/* ---------- 下载 ---------- */
+function onModeChange(){
+  const m = document.getElementById('mode').value;
+  const show = m === 'post';
+  document.getElementById('maxCountsField').style.display = show ? '' : 'none';
+  document.getElementById('dateRow').style.display = show ? '' : 'none';
+}
+
+async function parseLink(){
+  const url = document.getElementById('urlInput').value.trim();
+  if (!url){ toast('请输入链接', 'err'); return; }
+  const { data } = await api('/api/parse', {method:'POST', body: JSON.stringify({url})});
+  if (data.ok){
+    const i = data.info;
+    // 顺便展示规范化后的地址：原链接里的 ?modal_id=xxx&type=general 等都会被抹掉
+    toast(`识别为：${i.kind === 'video' ? '单个作品' : '用户主页'} · ${i.url || i.id}`);
+  } else {
+    toast(data.message || '解析失败', 'err');
+  }
+}
+
+async function startDownload(){
+  const url = document.getElementById('urlInput').value.trim();
+
+  /* 按钮是 aria-disabled（仍可聚焦、可点），所以这里必须真的拦一次，
+     并且给出原因 + 把视线带过去，而不是静默什么都不做。 */
+  if (!COOKIE_SET){
+    toast('需要先完成登录', 'err');
+    setLoginStatus('请先点「打开登录窗口」完成登录', 'err');
+    scrollToLogin();
+    return;
+  }
+  if (!url){
+    toast('请先粘贴作品链接', 'err');
+    document.getElementById('urlInput').focus();
+    return;
+  }
+
+  const payload = {
+    url,
+    mode: document.getElementById('mode').value,
+    max_counts: document.getElementById('maxCounts').value,
+    date_start: document.getElementById('dateStart').value,
+    date_end: document.getElementById('dateEnd').value,
+    force: document.getElementById('forceDl').checked,
+  };
+
+  const btn = document.getElementById('dlBtn');
+  const reason = document.getElementById('dlReason');
+  btn.disabled = true;                 // 唯一用原生 disabled 的场合：请求飞行中
+  reason.style.display = '';
+  reason.innerHTML = WARN_ICON + '正在创建任务…';
+
+  const { data } = await api('/api/download', {method:'POST', body: JSON.stringify(payload)});
+
+  btn.disabled = false;
+  syncDlCard();
+
+  if (data.ok){
+    toast('任务已创建', 'ok');
+    refreshTasks();
+    startPolling();
+  } else {
+    toast(data.message || '创建任务失败', 'err');
+    /* 这条反应式路径必须保留 —— cookie_set 只表示「配置里有 cookie」，
+       不代表 cookie 还有效；真值只有后端这里才知道。
+       只靠前置判定会把「cookie 已失效」的用户彻底卡住。 */
+    if (data.need_login){
+      setCookieBadge(false);
+      setLoginBusy(false, false);
+      setLoginStatus(data.message, 'err');
+      scrollToLogin();
+    }
+  }
+}
+
+/* ---------- 确认弹层（替代原生 confirm） ---------- */
+let _modalResolve = null;
+
+function askConfirm(opts){
+  document.getElementById('modalTitleText').textContent = opts.title;
+  document.getElementById('modalBody').textContent = opts.body;
+  document.getElementById('modalOk').textContent = opts.okText || '确定';
+  const mask = document.getElementById('modalMask');
+  mask.classList.add('show');
+  mask.setAttribute('aria-hidden', 'false');
+  document.getElementById('modalOk').focus();
+  return new Promise(res => { _modalResolve = res; });
+}
+
+function closeModal(v){
+  const mask = document.getElementById('modalMask');
+  mask.classList.remove('show');
+  mask.setAttribute('aria-hidden', 'true');
+  const res = _modalResolve;
+  _modalResolve = null;
+  if (res) res(!!v);
+}
+
+/* 破坏性操作从顶栏搬到任务卡片页脚后，仍然要二次确认 */
+async function askResetHistory(){
+  const yes = await askConfirm({
+    title: '清空下载记录',
+    body: '清空后所有作品都会重新校验一遍：文件还在的会秒跳过（不重新下载），'
+        + '被删掉的会重新下载。\n\n确定要清空吗？',
+    okText: '确定清空',
+  });
+  if (!yes) return;
+  const { data } = await api('/api/reset-history', {method:'POST', body: JSON.stringify({})});
+  toast(data.message || (data.ok ? '下载记录已清空' : '操作失败'), data.ok ? 'ok' : 'err');
+}
+
+/* ---------- 任务列表 ---------- */
+const EMPTY_HTML = `
+          <div class="empty empty-lg">
+            <svg viewBox="0 0 24 24"><path d="M12 3.5v11"/><path d="M7.5 10.5 12 15l4.5-4.5"/><path d="M4.5 18.5h15"/></svg>
+            <b>还没有任务</b>
+            <span>在上面粘贴作品链接，点「开始下载」即可</span>
+          </div>`;
+
+const STAGE_LABELS = ['解析链接', '获取信息', '下载中'];
+
+function taskCardHTML(t){
+  const label = t.kind === 'post' ? '主页批量' : '单个作品';
+  const done  = t.status === 'done';
+  const live  = t.status === 'running' || t.status === 'pending';
+
+  /* 进度未知 → indeterminate。
+     判定是 !(total > current) 而不是 total <= 0：
+     批量「不限条数」时后端拿 index 当 total，会让 total === current，
+     pct 恒 100% —— 一边写「下载中」一边满格，比恒 0 更误导。
+     只在 running 时流动：排队中的任务什么都没干，
+     给它一条流动的条子同样是误导（那一条应该是一条空轨道）。 */
+  const indet = t.status === 'running' && !(t.total > t.current);
+  const pct = indet ? 0
+    : (t.total > 0 ? Math.min(100, Math.round(t.current / t.total * 100))
+                   : (done ? 100 : 0));
+
+  /* 单个作品任务的分母写死为 3，画百分比是假进度 → 改画阶段点 */
+  const stages = (t.kind === 'one' && live)
+    ? '<div class="stages">' + STAGE_LABELS.map((s, i) => {
+        const cls = i < t.current ? 'ok' : (i === t.current ? 'on' : '');
+        return `<span class="st ${cls}"><span class="dot ${cls}"></span>` +
+               `<span class="lbl">${s}</span></span>`;
+      }).join('') + '</div>'
+    : '';
+
+  const bar = stages ? ''
+    : `<div class="bar ${done ? 'done' : ''}${indet ? ' indet' : ''}">` +
+      `<i style="width:${indet ? 38 : pct}%"></i></div>`;
+
+  const meta = indet ? '进行中' : `${t.current}/${t.total || '?'}`;
+
+  /* 取消按钮只给批量任务。
+     /api/cancel/<tid> 对单个作品是「静默无效」的 ——
+     core.download_one() 根本没有 should_stop 参数（core.py:347-352），
+     web_app.py:635-637 调用时也没传，只有 post 模式传了。
+     给单个作品画取消按钮 = 画一个点了没反应的按钮。 */
+  const cancel = (t.kind === 'post' && live)
+    ? `<button class="ghost sm" onclick="cancelTask('${escapeHtml(t.id)}')">取消</button>`
+    : '';
+
+  let extra = '';
+  if (done && t.result){
+    const r = t.result;
+    if (r.download_count != null){
+      const resumed = r.resumed && r.resumed.length ? `，其中 ${r.resumed.length} 条是文件丢失后补下` : '';
+      extra = `<div class="msg">下载 ${r.download_count} 条，跳过 ${r.skipped ? r.skipped.length : 0} 条` +
+              (r.failed && r.failed.length ? `，失败 ${r.failed.length} 条` : '') + resumed + `</div>`;
+    } else if (r.skipped){
+      // 真跳过：记录在案且文件此刻确实还在
+      const fname = String(r.path || '').split(/[\\/]/).pop();
+      extra = `<div class="msg">本地已存在，跳过下载${fname ? '：' + escapeHtml(fname) : ''}</div>`;
+    } else if (r.redownload && r.path){
+      extra = `<div class="msg warn">记录显示曾下载过，但文件已丢失，已重新下载：` +
+              `${escapeHtml(r.nickname||'')} ${escapeHtml((r.desc_full||r.desc||'').slice(0,36))}</div>`;
+    } else if (r.path){
+      extra = `<div class="msg">${escapeHtml(r.nickname||'')} ${escapeHtml((r.desc_full||r.desc||'').slice(0,40))}</div>`;
+    } else if (r.skipped === false && r.path === null){
+      extra = `<div class="msg warn">没有生成视频文件（可能为图文作品 / 已被屏蔽 / 私密）</div>`;
+    }
+  }
+  const err = t.error ? `<div class="msg err">${escapeHtml(t.error)}</div>` : '';
+
+  return `
+      <div class="task">
+        <div class="task-top">
+          <div class="t-main">
+            <div class="task-name">${label} · ${escapeHtml(shortTarget(t.target))}</div>
+            <div class="task-meta">${escapeHtml(meta)}</div>
+          </div>
+          <div class="t-side">
+            <span class="tag ${escapeHtml(t.status)}">${escapeHtml(statusText(t.status))}</span>
+            ${cancel}
+          </div>
+        </div>
+        ${bar}${stages}
+        <div class="msg">${escapeHtml(t.message||'')}</div>
+        ${extra}${err}
+      </div>`;
+}
+
+async function refreshTasks(){
+  const { data } = await api('/api/tasks');
+  const box = document.getElementById('taskList');
+  const tasks = (data.tasks || []);
+  lastTasks = tasks;
+  box.innerHTML = tasks.length ? tasks.map(taskCardHTML).join('') : EMPTY_HTML;
+}
+
+async function cancelTask(tid){
+  const { data } = await api('/api/cancel/' + encodeURIComponent(tid), {method:'POST'});
+  toast(data.message || '已请求取消', data.ok === false ? 'err' : 'ok');
+  refreshTasks();
+}
+
+function statusText(s){
+  return {pending:'排队中', running:'下载中', done:'已完成', failed:'失败', cancelled:'已取消'}[s] || s;
+}
+function escapeHtml(s){
+  return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+// 任务标题里只显示链接的关键部分，避免 "om/jingxuan?modal_id=..." 这种被截断的谜语
+function shortTarget(raw){
+  let s = String(raw||'').trim();
+  s = s.replace(/^https?:\/\/(www\.|m\.|v\.)?douyin\.com/i, '').replace(/^https?:\/\/(www\.)?iesdouyin\.com/i, '');
+  s = s.replace(/^\/+/, '');
+  return s.length > 48 ? '…' + s.slice(-48) : s;
+}
+
+function startPolling(){
+  if (pollTimer) return;
+  pollTimer = setInterval(refreshTasks, 1500);
+}
+
+async function openFolder(){
+  const { data } = await api('/api/open-folder', {method:'POST'});
+  if (!data.ok) toast(data.message || '打开失败', 'err');
+}
+
+/* ---------- 生命周期：关掉页面 = 程序退出 ----------
+   程序是无窗口的 exe，用户能看见的只有这个标签页。关掉它时后端收不到
+   任何信号，只能靠「心跳断掉」判断 —— 所以这里做两件事：
+     1) 定期心跳，证明「还有人看着」
+     2) 关闭时用 sendBeacon 主动上报，让退出更及时 */
+const HEARTBEAT_MS = 3000;
+
+function heartbeat(){
+  // keepalive：让请求在页面正在卸载时也能发出去
+  fetch('/api/heartbeat', {method:'POST', keepalive:true}).catch(()=>{});
+}
+
+// pagehide 在关闭 / 刷新 / 跳转时都会触发。
+// 刷新也会上报，所以后端留了 4 秒宽限期 ——
+// 刷新后新页面立刻发心跳，就把「待退出」取消了。
+let closingSent = false;
+window.addEventListener('pagehide', () => {
+  if (closingSent) return;
+  closingSent = true;
+  try {
+    navigator.sendBeacon('/api/closing', '1');
+  } catch(e){
+    fetch('/api/closing', {method:'POST', keepalive:true}).catch(()=>{});
+  }
+});
+
+// 回到前台 / 从后退缓存恢复时立刻补一次心跳。
+// 浏览器会节流甚至冻结后台标签页的定时器，醒过来必须马上报到，
+// 否则后端的「心跳断了」判断会误伤正在使用的实例。
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) heartbeat();
+});
+window.addEventListener('pageshow', heartbeat);
+
+// 有任务在跑时拦一下，避免手滑关掉页面把下载中断掉
+window.addEventListener('beforeunload', (e) => {
+  const busy = lastTasks.some(t => t.status === 'running' || t.status === 'pending');
+  if (!busy) return;
+  e.preventDefault();
+  e.returnValue = '';
+  return '';
+});
+
+/* ---------- 键盘 ---------- */
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape'){
+    const mask = document.getElementById('modalMask');
+    if (mask && mask.classList.contains('show')){ closeModal(false); return; }
+  }
+  // Ctrl / Cmd + Enter：粘贴完直接提交，不用去够鼠标
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter'){
+    const btn = document.getElementById('dlBtn');
+    if (btn && !btn.disabled) startDownload();
+  }
+});
+
+// 点遮罩空白处 = 取消
+document.getElementById('modalMask').addEventListener('mousedown', (e) => {
+  if (e.target.id === 'modalMask') closeModal(false);
+});
+
+/* ---------- 初始化 ---------- */
+if (!DEMO){
+  heartbeat();
+  setInterval(heartbeat, HEARTBEAT_MS);
+  startPolling();
+}
+syncThemeBtn();
+syncDlCard();
+loadConfig();
+refreshTasks();
+</script>
+</body>
+</html>

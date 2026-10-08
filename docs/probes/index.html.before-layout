@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light dark">
+<title>抖音视频下载器</title>
+<script>
+/* 尽早决定主题，避免首屏闪白 */
+(function(){
+  try{
+    var saved = localStorage.getItem('dyd-theme');
+    var dark = saved ? saved === 'dark'
+                     : window.matchMedia('(prefers-color-scheme: dark)').matches;
+    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+  }catch(e){}
+})();
+</script>
+<style>
+  /* ============================================================
+     Claude 风格设计令牌
+     ============================================================ */
+  :root{
+    color-scheme:light;
+
+    /* 表面 */
+    --bg:#F5F4EE;
+    --surface:#FFFFFF;
+    --surface-2:#FAF9F5;
+    --border:#E6E4DB;
+    --border-2:#D9D7CC;
+    --track:#EDEBE2;
+
+    /* 文字 */
+    --text:#1C1B18;
+    --text-2:#6E6C65;
+    --text-3:#9C9A90;
+
+    /* 强调 */
+    --accent:#D97757;
+    --accent-hover:#C05F3D;
+    --accent-soft:#F7E7DF;
+    --accent-ring:rgba(217,119,87,.16);
+    --green:#3D7A57;
+    --green-soft:#E5EFE8;
+    --yellow:#956B26;
+    --yellow-soft:#F7EDDA;
+    --red:#B4442F;
+    --red-soft:#F8E4DE;
+    --blue:#5B7B96;
+    --blue-soft:#E8EEF2;
+
+    /* 形状 */
+    --radius:1rem;
+    --radius-sm:0.7143rem;
+    --shadow:0 1px 2px rgba(30,27,20,.05), 0 2px 10px rgba(30,27,20,.035);
+
+    /* 间距刻度 */
+    --sp-1:0.2857rem;  --sp-2:0.5714rem;  --sp-3:0.8571rem;
+    --sp-4:1.1429rem; --sp-5:1.5714rem; --sp-6:2.1429rem;
+
+    /* 布局 */
+    --wrap:77.1429rem;
+    --aside:24.2857rem;
+
+    /* 字体：西文/数字在前，中文在后（各自命中自己的字形） */
+    --font-sans:-apple-system,BlinkMacSystemFont,"Segoe UI Variable Text","Segoe UI",
+      Roboto,Inter,"Helvetica Neue","PingFang SC","HarmonyOS Sans SC","MiSans",
+      "Source Han Sans SC","Noto Sans SC","Microsoft YaHei UI","Microsoft YaHei",sans-serif;
+    --font-serif:"Source Han Serif SC","Noto Serif SC","Songti SC","STSong",
+      SimSun,ui-serif,Georgia,"Times New Roman",serif;
+    --font-mono:"JetBrains Mono","Cascadia Mono","Cascadia Code",ui-monospace,
+      "SF Mono",Menlo,Consolas,"Microsoft YaHei UI","Microsoft YaHei",monospace;
+  }
+  html[data-theme="dark"]{
+    color-scheme:dark;
+    --bg:#1F1E1B;
+    --surface:#262521;
+    --surface-2:#2D2C27;
+    --border:#3A3833;
+    --border-2:#4A4842;
+    --track:#35342F;
+    --text:#F1EFE7;
+    --text-2:#A9A79E;
+    --text-3:#7C7A72;
+    --accent:#D97757;
+    --accent-hover:#E88A69;
+    --accent-soft:rgba(217,119,87,.15);
+    --accent-ring:rgba(217,119,87,.22);
+    --green:#7CB392;
+    --green-soft:rgba(124,179,146,.14);
+    --yellow:#D6AB61;
+    --yellow-soft:rgba(214,171,97,.14);
+    --red:#E28A74;
+    --red-soft:rgba(226,138,116,.14);
+    --blue:#93B1C8;
+    --blue-soft:rgba(147,177,200,.14);
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 2px 12px rgba(0,0,0,.18);
+  }
+
+  /* ============================================================
+     基础
+     ============================================================ */
+  *{margin:0;padding:0;box-sizing:border-box;}
+  /* 基准字号随窗口宽度流式放大：1164px 时正好 14px（=1.0 倍），
+     到约 1455px 封顶 17.5px（=1.25 倍）。页面上所有尺寸都用 rem，
+     于是窗口变大时界面整体等比放大，而不是只有空白变多。
+     用 rem 而不是 zoom：整数/非整数倍都不会让文字发糊。 */
+  html{font-size:clamp(14px,1.2028vw,17.5px);scroll-behavior:smooth;}
+  body{
+    background:var(--bg);color:var(--text);
+    font-family:var(--font-sans);
+    font-size:1rem;line-height:1.65;
+    -webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility;
+    padding:0 0 2.8571rem;
+  }
+  /* 换主题那一帧由 JS 挂上这个类，把所有过渡关掉：
+     否则大面积背景在 0.2s 里慢慢化过去、小块元素却已经跳完了，
+     看起来就像「慢半拍 / 有延迟」。平时不挂，hover/focus 过渡照旧。 */
+  html.no-anim *,html.no-anim *::before,html.no-anim *::after{
+    transition:none !important;}
+  .wrap{max-width:var(--wrap);margin:0 auto;padding:0 1.7143rem;}
+
+  ::selection{background:var(--accent-soft);color:var(--text);}
+  ::-webkit-scrollbar{width:11px;height:11px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+  /* 滚动条属于系统外壳，尺寸不参与等比缩放 */
+  ::-webkit-scrollbar-thumb{background:var(--border-2);border-radius:8px;
+    border:3px solid var(--bg);}
+  ::-webkit-scrollbar-thumb:hover{background:var(--text-3);}
+
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+
+  /* ============================================================
+     顶栏
+     ============================================================ */
+  header{
+    background:color-mix(in srgb,var(--bg) 88%,transparent);
+    backdrop-filter:saturate(160%) blur(12px);
+    -webkit-backdrop-filter:saturate(160%) blur(12px);
+    border-bottom:1px solid var(--border);
+    padding:1.4286rem 0 1.1429rem;margin-bottom:var(--sp-6);
+    position:sticky;top:0;z-index:20;
+  }
+  header .wrap{display:flex;align-items:center;justify-content:space-between;
+    gap:var(--sp-4);flex-wrap:wrap;}
+  .brand{display:flex;align-items:center;gap:0.7857rem;}
+  .mark{display:inline-flex;color:var(--accent);}
+  .mark svg{width:1.5714rem;height:1.5714rem;fill:currentColor;display:block;}
+  /* 内容区图标跟着字号放大。右上角那排窗口按钮（.win-controls）不在此列：
+     它们属于窗口外壳，尺寸固定 30px。 */
+  #themeBtn svg{width:1.0714rem;height:1.0714rem;}
+  h1{font-family:var(--font-serif);font-size:1.5714rem;font-weight:600;
+    letter-spacing:-.015em;line-height:1.2;}
+  .sub{font-size:0.75rem;color:var(--text-3);letter-spacing:.09em;
+    text-transform:uppercase;margin-top:0.1429rem;font-weight:500;}
+  .status{display:flex;gap:0.7143rem;align-items:center;flex-wrap:wrap;}
+  .status-actions{display:flex;gap:0.5714rem;align-items:center;}
+
+  /* ---------- 应用窗口（无边框）----------
+     页面既可能开在系统浏览器里，也可能装进应用自己的无边框窗口。
+     只有后者才需要：顶栏当拖动把手 + 自绘的最小化/关闭按钮。 */
+  header.pywebview-drag-region{cursor:default;user-select:none;
+    -webkit-user-select:none;}
+  header.pywebview-drag-region .status-actions button{cursor:pointer;}
+  .win-controls{display:none;gap:2px;align-items:center;margin-left:2px;
+    padding-left:9px;border-left:1px solid var(--border);}
+  body.in-app-window .win-controls{display:flex;}
+  .win-controls button{width:30px;height:30px;padding:0;
+    display:inline-flex;align-items:center;justify-content:center;}
+  .win-controls button svg{display:block;}
+  /* 最大化/还原两套图标，靠 body 上的状态类切换 */
+  .win-controls #winMax .ico-restore{display:none;}
+  body.win-maximized .win-controls #winMax .ico-max{display:none;}
+  body.win-maximized .win-controls #winMax .ico-restore{display:block;}
+  .win-controls #winClose:hover{background:#E5484D;border-color:#E5484D;
+    color:#fff;}
+
+  .badge{padding:0.2857rem 0.7857rem;border-radius:71.3571rem;font-size:0.8214rem;font-weight:600;
+    display:inline-flex;align-items:center;gap:0.4286rem;white-space:nowrap;
+    letter-spacing:.01em;}
+  .badge::before{content:"";width:0.4286rem;height:0.4286rem;border-radius:50%;
+    background:currentColor;opacity:.85;flex:none;}
+  .badge.ok{background:var(--green-soft);color:var(--green);}
+  .badge.bad{background:var(--yellow-soft);color:var(--yellow);}
+
+  /* ============================================================
+     布局：窄屏单列（登录→下载→任务），宽屏两栏
+     ============================================================ */
+  .layout{display:grid;gap:1.4286rem;align-items:start;}
+
+  @media (min-width:1000px){
+    .layout{
+      grid-template-columns:minmax(0,1fr) var(--aside);
+      grid-template-areas:
+        "dl    login"
+        "tasks tips";
+    }
+    .card--dl   {grid-area:dl;}
+    .card--login{grid-area:login;}
+    .card--tasks{grid-area:tasks;}
+    .card--tips {grid-area:tips;}
+  }
+
+  /* ============================================================
+     卡片
+     ============================================================ */
+  .card{
+    background:var(--surface);border:1px solid var(--border);
+    border-radius:var(--radius);padding:1.7143rem;
+    box-shadow:var(--shadow);
+  }
+  .card--login,.card--tips{padding:1.4286rem;}
+
+  .card-head{display:flex;align-items:center;justify-content:space-between;
+    gap:var(--sp-3);margin-bottom:var(--sp-5);}
+  .card-head h2{font-size:1.0714rem;font-weight:650;letter-spacing:-.005em;
+    display:flex;align-items:center;gap:0.7143rem;line-height:1.3;}
+  .ico{width:1.8571rem;height:1.8571rem;border-radius:0.5714rem;flex:none;
+    background:var(--accent-soft);color:var(--accent);
+    display:inline-flex;align-items:center;justify-content:center;}
+  .ico svg{width:1.0714rem;height:1.0714rem;display:block;fill:none;
+    stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
+
+  /* ============================================================
+     表单
+     ============================================================ */
+  .field{margin-bottom:var(--sp-4);}
+  label{display:block;font-size:0.8929rem;color:var(--text-2);
+    margin-bottom:0.5rem;font-weight:550;letter-spacing:.01em;}
+  input,textarea,select{
+    width:100%;background:var(--surface-2);border:1px solid var(--border-2);
+    border-radius:var(--radius-sm);padding:0.7857rem 0.9286rem;color:var(--text);
+    font-size:0.9643rem;font-family:var(--font-sans);line-height:1.55;
+    outline:none;
+    transition:border-color .15s,box-shadow .15s,background .15s;
+  }
+  input:hover,textarea:hover,select:hover{border-color:var(--text-3);}
+  input:focus,textarea:focus,select:focus{
+    border-color:var(--accent);background:var(--surface);
+    box-shadow:0 0 0 3.5px var(--accent-ring);
+  }
+  input::placeholder,textarea::placeholder{color:var(--text-3);}
+  textarea{resize:vertical;min-height:6.8571rem;}
+  select{cursor:pointer;appearance:none;
+    background-image:linear-gradient(45deg,transparent 50%,var(--text-2) 50%),
+                     linear-gradient(135deg,var(--text-2) 50%,transparent 50%);
+    background-position:calc(100% - 18px) 50%,calc(100% - 13px) 50%;
+    background-size:5px 5px,5px 5px;background-repeat:no-repeat;
+    padding-right:2.4286rem;}
+
+  .label-row{display:flex;align-items:center;justify-content:space-between;
+    gap:var(--sp-3);margin-bottom:0.5rem;}
+  .label-row label{margin-bottom:0;}
+
+  .row{display:grid;grid-template-columns:repeat(auto-fit,minmax(10.7143rem,1fr));
+    gap:var(--sp-4);}
+  .hint{font-size:0.8571rem;color:var(--text-3);margin-top:0.4286rem;line-height:1.7;}
+  .hint strong{color:var(--text-2);font-weight:600;}
+  .hint:last-child{margin-bottom:0;}
+
+  /* 选项区：把「模式 / 条数 / 日期」收进一块次级面板 */
+  .options{
+    background:var(--surface-2);border:1px solid var(--border);
+    border-radius:var(--radius-sm);padding:1.1429rem 1.1429rem 0.1429rem;
+    margin-bottom:var(--sp-4);
+  }
+  .options input,.options select{background:var(--surface);}
+  .options .field{margin-bottom:1rem;}
+
+  /* ============================================================
+     按钮
+     ============================================================ */
+  button{
+    background:var(--accent);color:#fff;border:1px solid transparent;
+    border-radius:var(--radius-sm);padding:0.7143rem 1.2857rem;font-size:0.9643rem;
+    font-weight:600;cursor:pointer;font-family:inherit;line-height:1.45;
+    white-space:nowrap;
+    transition:background .15s,border-color .15s,color .15s,transform .08s;
+  }
+  button:hover{background:var(--accent-hover);}
+  button:active{transform:scale(.985);}
+  button:disabled{opacity:.45;cursor:not-allowed;transform:none;}
+  button.ghost{background:var(--surface);border-color:var(--border-2);
+    color:var(--text-2);}
+  button.ghost:hover{background:var(--surface);border-color:var(--text-3);
+    color:var(--text);}
+  button.sm{padding:0.5rem 0.9286rem;font-size:0.8929rem;}
+  button.icon{padding:0.5rem 0.7143rem;font-size:0.9286rem;line-height:1;
+    display:inline-flex;align-items:center;justify-content:center;}
+  button.icon svg{display:block;}
+  .btn-row{display:flex;gap:0.7143rem;flex-wrap:wrap;align-items:center;}
+  /* 登录卡片：主操作独占一行，两个次要操作平分一行 */
+  .card--login .btn-row{display:grid;grid-template-columns:1fr 1fr;gap:0.5714rem;}
+  .card--login .btn-row #loginBtn{grid-column:1 / -1;}
+  .actions{display:flex;gap:var(--sp-4);flex-wrap:wrap;align-items:center;
+    margin-top:var(--sp-2);}
+
+  .chk{display:inline-flex;align-items:center;gap:0.5rem;font-size:0.8929rem;
+    color:var(--text-2);cursor:pointer;user-select:none;white-space:nowrap;}
+  .chk input{width:auto;accent-color:var(--accent);cursor:pointer;
+    background:none;border:none;padding:0;}
+
+  /* ============================================================
+     登录状态行
+     ============================================================ */
+  .status-line{
+    background:var(--surface-2);border:1px solid var(--border);
+    border-radius:0.6429rem;padding:0.7143rem 0.8571rem;margin-bottom:var(--sp-4);
+  }
+  .status-line .msg{margin-top:0;}
+
+  /* ============================================================
+     折叠说明
+     ============================================================ */
+  details{border:1px solid var(--border);border-radius:var(--radius-sm);
+    padding:0.8571rem 1rem;background:var(--surface-2);margin-top:var(--sp-4);}
+  summary{cursor:pointer;font-size:0.8929rem;font-weight:600;color:var(--text-2);
+    list-style:none;}
+  summary::-webkit-details-marker{display:none;}
+  summary::before{content:"›";display:inline-block;margin-right:0.5714rem;
+    color:var(--text-3);transition:transform .18s;font-weight:700;}
+  details[open] summary::before{transform:rotate(90deg);}
+  summary:hover{color:var(--text);}
+  details[open] summary{margin-bottom:0.7143rem;}
+  details ol{margin-left:1.4286rem;font-size:0.8929rem;color:var(--text-2);}
+  details ol li{margin-bottom:0.4286rem;}
+  details ol li:last-child{margin-bottom:0;}
+  details code{background:var(--accent-soft);padding:0.1429rem 0.4286rem;border-radius:0.3571rem;
+    font-size:0.8214rem;color:var(--accent);font-family:var(--font-mono);}
+
+  /* ============================================================
+     小贴士
+     ============================================================ */
+  .tips{list-style:none;}
+  .tips li{position:relative;padding-left:1.2143rem;font-size:0.8929rem;
+    line-height:1.7;color:var(--text-2);margin-bottom:0.7857rem;}
+  .tips li:last-child{margin-bottom:0;}
+  .tips li::before{content:"";position:absolute;left:0.1429rem;top:0.5714rem;
+    width:0.3571rem;height:0.3571rem;border-radius:50%;background:var(--accent);
+    opacity:.55;}
+  .tips strong{color:var(--text);font-weight:600;display:block;
+    font-size:0.8929rem;margin-bottom:0.0714rem;}
+
+  /* ============================================================
+     任务列表
+     ============================================================ */
+  .task{border:1px solid var(--border);border-radius:var(--radius-sm);
+    padding:1rem 1.1429rem;margin-bottom:0.7143rem;background:var(--surface-2);}
+  .task:last-child{margin-bottom:0;}
+  .task-top{display:flex;justify-content:space-between;gap:var(--sp-3);
+    align-items:flex-start;margin-bottom:0.6429rem;}
+  .task-name{font-size:0.9286rem;font-weight:600;word-break:break-all;
+    line-height:1.5;}
+  .task-meta{font-size:0.8214rem;color:var(--text-3);margin-top:0.2143rem;
+    font-variant-numeric:tabular-nums;letter-spacing:.01em;}
+  .tag{padding:0.2143rem 0.7143rem;border-radius:71.3571rem;font-size:0.7857rem;font-weight:650;
+    white-space:nowrap;flex:none;}
+  .tag.running{background:var(--blue-soft);color:var(--blue);}
+  .tag.done{background:var(--green-soft);color:var(--green);}
+  .tag.failed{background:var(--red-soft);color:var(--red);}
+  .tag.pending{background:var(--track);color:var(--text-3);}
+  .tag.cancelled{background:var(--yellow-soft);color:var(--yellow);}
+
+  .bar{height:0.3571rem;background:var(--track);border-radius:0.2143rem;overflow:hidden;
+    margin-top:0.7143rem;}
+  .bar > i{display:block;height:100%;background:var(--accent);
+    border-radius:0.2143rem;transition:width .35s ease;width:0;}
+  .bar.done > i{background:var(--green);}
+  .msg{font-size:0.8571rem;color:var(--text-2);margin-top:0.5714rem;line-height:1.6;}
+  .msg.err{color:var(--red);word-break:break-all;}
+  .msg.warn{color:var(--yellow);}
+  .empty{text-align:center;color:var(--text-3);font-size:0.8929rem;
+    padding:1.8571rem 0;}
+
+  /* ============================================================
+     页脚 / Toast
+     ============================================================ */
+  .foot{max-width:var(--wrap);margin:var(--sp-5) auto 0;padding:0 1.7143rem;
+    font-size:0.8214rem;color:var(--text-3);text-align:center;
+    letter-spacing:.01em;}
+
+  #toast{
+    position:fixed;bottom:28px;left:50%;
+    transform:translateX(-50%) translateY(90px);
+    background:var(--surface);border:1px solid var(--border);
+    border-radius:0.8571rem;padding:0.8571rem 1.4286rem;font-size:0.9286rem;
+    opacity:0;transition:all .3s cubic-bezier(.22,.61,.36,1);
+    pointer-events:none;z-index:99;max-width:80vw;
+    box-shadow:0 8px 28px rgba(30,27,20,.14),0 2px 6px rgba(30,27,20,.06);
+  }
+  html[data-theme="dark"] #toast{
+    box-shadow:0 8px 28px rgba(0,0,0,.45),0 2px 6px rgba(0,0,0,.3);}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  #toast.err{border-color:var(--red);color:var(--red);}
+  #toast.ok{border-color:var(--green);color:var(--green);}
+
+  /* ============================================================
+     窄屏微调
+     ============================================================ */
+  @media (max-width:640px){
+    .wrap{padding:0 1.1429rem;}
+    header{padding:1.0714rem 0 0.9286rem;margin-bottom:var(--sp-5);}
+    h1{font-size:1.3571rem;}
+    .sub{display:none;}
+    .card{padding:1.2857rem;}
+    .card--login,.card--tips{padding:1.1429rem;}
+    .foot{padding:0 1.1429rem;}
+  }
+</style>
+</head>
+<body>
+
+<header class="pywebview-drag-region">
+  <div class="wrap">
+    <div class="brand">
+      <span class="mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="22" height="22">
+          <path d="M12 2C12.8 7.2 16.8 11.2 22 12C16.8 12.8 12.8 16.8 12 22C11.2 16.8 7.2 12.8 2 12C7.2 11.2 11.2 7.2 12 2Z"/>
+        </svg>
+      </span>
+      <div>
+        <h1>抖音视频下载器</h1>
+        <p class="sub">Douyin Video Downloader</p>
+      </div>
+    </div>
+    <div class="status">
+      <span class="badge" id="cookieBadge">检查中...</span>
+      <div class="status-actions">
+        <button class="ghost sm" onclick="openFolder()">打开下载目录</button>
+        <button class="ghost sm" onclick="resetHistory()" title="清空后，已下载的作品会重新校验一遍">清空下载记录</button>
+        <button class="ghost sm icon" id="themeBtn" onclick="toggleTheme()" title="切换主题">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.6A8.6 8.6 0 1 1 9.4 4a6.9 6.9 0 0 0 10.6 10.6z"/></svg>
+        </button>
+        <!-- 仅在应用窗口里显示：浏览器标签页有自己的最小化/关闭 -->
+        <div class="win-controls" id="winControls">
+          <button class="ghost sm icon" onclick="winMinimize()" title="最小化" aria-label="最小化">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M5.5 12h13"/></svg>
+          </button>
+          <button class="ghost sm icon" id="winMax" onclick="winToggleMax()" title="最大化" aria-label="最大化">
+            <svg class="ico-max" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><rect x="6.5" y="6.5" width="11" height="11" rx="1.6"/></svg>
+            <svg class="ico-restore" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="8.5" y="8.5" width="9.5" height="9.5" rx="1.6"/><path d="M6 15.5V7.6A1.6 1.6 0 0 1 7.6 6h7.9"/></svg>
+          </button>
+          <button class="ghost sm icon" id="winClose" onclick="winClose()" title="关闭" aria-label="关闭">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="layout">
+
+    <!-- ============ 登录（宽屏落右栏，窄屏排最前） ============ -->
+    <section class="card card--login">
+      <div class="card-head">
+        <h2>
+          <span class="ico" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><rect x="4" y="10.5" width="16" height="10" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/><circle cx="12" cy="15.5" r="1.3"/></svg>
+          </span>
+          登录抖音
+        </h2>
+      </div>
+
+      <p class="hint" style="margin-bottom:14px">
+        点下面的按钮会打开一个<strong>专属浏览器窗口</strong>，它与你的日常浏览器
+        <strong>完全隔离</strong>，不读取也不影响你现有的账号、书签和历史记录。
+        在窗口里扫码即可，程序会自动接住登录态。<br>
+        登录一次长期有效，之后<strong>直接粘贴网址就能下载</strong>。
+      </p>
+
+      <div class="status-line">
+        <div class="msg" id="loginStatus">正在检查登录状态…</div>
+      </div>
+
+      <div class="btn-row">
+        <button id="loginBtn" onclick="startLogin(true)">打开登录窗口</button>
+        <button class="ghost sm" id="syncBtn" onclick="startLogin(false)">同步登录态</button>
+        <button class="ghost sm" id="forgetBtn" onclick="forgetLogin()">退出登录</button>
+      </div>
+
+      <div class="bar" id="loginBar" style="display:none"><i></i></div>
+
+      <details>
+        <summary>看不到窗口 / 提示超时？</summary>
+        <ol>
+          <li>确认已安装 <strong>Chrome</strong> 或 <strong>Edge</strong>；</li>
+          <li>若提示通道超时，可能是上次的登录窗口没关干净 ——
+              关闭所有由本程序打开的浏览器窗口后重试；</li>
+          <li>登录窗口里如出现「不安全」提示属正常（本地调试端口），可忽略；</li>
+          <li>长时间未操作会超时（180 秒），重新点按钮即可。</li>
+        </ol>
+      </details>
+    </section>
+
+    <!-- ============ 下载（主操作） ============ -->
+    <section class="card card--dl">
+      <div class="card-head">
+        <h2>
+          <span class="ico" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M12 3.5v11"/><path d="M7.5 10.5 12 15l4.5-4.5"/><path d="M4.5 18.5h15"/></svg>
+          </span>
+          开始下载
+        </h2>
+      </div>
+
+      <div class="field">
+        <div class="label-row">
+          <label for="urlInput">作品链接</label>
+          <button class="ghost sm" onclick="parseLink()">仅解析链接</button>
+        </div>
+        <textarea id="urlInput" placeholder="粘贴分享文本或网址，例如：&#10;7.43 复制打开抖音…… https://v.douyin.com/xxxx/&#10;https://www.douyin.com/video/7xxxxxxxxxx"></textarea>
+        <p class="hint">支持分享文本 / 短链 / 完整链接 / 带 modal_id 的页面地址</p>
+      </div>
+
+      <div class="options">
+        <div class="row">
+          <div class="field">
+            <label for="mode">下载模式</label>
+            <select id="mode" onchange="onModeChange()">
+              <option value="one">单个作品</option>
+              <option value="post">用户主页（批量）</option>
+            </select>
+          </div>
+          <div class="field" id="maxCountsField" style="display:none">
+            <label for="maxCounts">最多下载条数</label>
+            <input type="number" id="maxCounts" value="20" min="0" placeholder="0 = 不限">
+          </div>
+        </div>
+        <div class="row" id="dateRow" style="display:none">
+          <div class="field">
+            <label for="dateStart">起始日期（可选）</label>
+            <input type="date" id="dateStart">
+          </div>
+          <div class="field">
+            <label for="dateEnd">结束日期（可选）</label>
+            <input type="date" id="dateEnd">
+          </div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="dlBtn" onclick="startDownload()">开始下载</button>
+        <label class="chk" title="忽略下载记录，即使文件还在也重新下载一遍">
+          <input type="checkbox" id="forceDl"> 强制重新下载
+        </label>
+      </div>
+    </section>
+
+    <!-- ============ 任务进度（左栏第二行） ============ -->
+    <section class="card card--tasks">
+      <div class="card-head">
+        <h2>
+          <span class="ico" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M4.5 7h15"/><path d="M4.5 12h15"/><path d="M4.5 17h9"/></svg>
+          </span>
+          任务进度
+        </h2>
+      </div>
+      <div id="taskList"><div class="empty">暂无任务</div></div>
+    </section>
+
+    <!-- ============ 使用小贴士（右栏第二行） ============ -->
+    <section class="card card--tips">
+      <div class="card-head">
+        <h2>
+          <span class="ico" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M12 3.5a5.5 5.5 0 0 0-3.3 9.9c.5.4.8 1 .8 1.6v.5h5v-.5c0-.6.3-1.2.8-1.6A5.5 5.5 0 0 0 12 3.5Z"/><path d="M10 18.5h4"/></svg>
+          </span>
+          使用小贴士
+        </h2>
+      </div>
+      <ul class="tips">
+        <li><strong>增量下载</strong>下过的作品自动跳过；文件被删掉时会自动补下。</li>
+        <li><strong>批量模式</strong>粘贴用户主页链接，按条数和日期区间筛选。</li>
+        <li><strong>文件命名</strong>日期_作者_文案，并按作者分目录存放。</li>
+        <li><strong>数据本地</strong>登录态与视频都只留在你自己电脑上。</li>
+      </ul>
+    </section>
+
+  </div>
+</main>
+
+<footer class="foot">本地运行 · 所有请求与文件都只在这台电脑上完成</footer>
+
+<div id="toast"></div>
+
+<script>
+let pollTimer = null;
+// 最近一次拉到的任务列表（beforeunload 里要用它判断「有没有任务在跑」）
+let lastTasks = [];
+
+function toast(msg, kind){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'show ' + (kind || '');
+  clearTimeout(t._h);
+  t._h = setTimeout(()=>{ t.className=''; }, 4200);
+}
+
+async function api(path, opts){
+  const r = await fetch(path, Object.assign({
+    headers: {'Content-Type':'application/json'}
+  }, opts || {}));
+  let data = {};
+  try { data = await r.json(); } catch(e){}
+  return { ok: r.ok, status: r.status, data };
+}
+
+/* ---------- 主题 ---------- */
+const ICON_MOON = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.6A8.6 8.6 0 1 1 9.4 4a6.9 6.9 0 0 0 10.6 10.6z"/></svg>';
+const ICON_SUN  = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="4.1"/><path d="M12 2.6v2.3M12 19.1v2.3M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M2.6 12h2.3M19.1 12h2.3M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6"/></svg>';
+
+function syncThemeBtn(){
+  const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const b = document.getElementById('themeBtn');
+  if (!b) return;
+  b.innerHTML = dark ? ICON_SUN : ICON_MOON;
+  b.title = dark ? '切换到浅色主题' : '切换到深色主题';
+}
+function toggleTheme(){
+  const root = document.documentElement;
+  const dark = root.getAttribute('data-theme') === 'dark';
+  const next = dark ? 'light' : 'dark';
+  // 换主题这一帧把所有过渡关掉：不然大面积背景在 0.2s 里慢慢化、
+  // 小块元素却已经跳完，看着就是拖尾。同步读一次布局把新样式压实，
+  // 下一帧再撤掉开关 —— 这样 hover / focus 的过渡平时完全不受影响。
+  root.classList.add('no-anim');
+  root.setAttribute('data-theme', next);
+  void root.offsetHeight;
+  requestAnimationFrame(() => requestAnimationFrame(
+    () => root.classList.remove('no-anim')));
+  try { localStorage.setItem('dyd-theme', next); } catch(e){}
+  syncThemeBtn();
+}
+
+/* ---------- 配置 ---------- */
+async function loadConfig(){
+  const { data } = await api('/api/config');
+  setCookieBadge(!!data.cookie_set);
+  if (data.default_max_counts != null){
+    document.getElementById('maxCounts').value = data.default_max_counts;
+  }
+  if (data.cookie_set){
+    setLoginStatus(lastSeen + (lastSeen ? '　' : '') + '✅ 已登录，可直接开始下载', '');
+  } else {
+    setLoginStatus('尚未登录，请点「打开登录窗口」', '');
+  }
+  if (data.browser){
+    document.getElementById('loginBtn').textContent = '打开登录窗口（' + data.browser + '）';
+  }
+}
+
+function setCookieBadge(isSet){
+  const b = document.getElementById('cookieBadge');
+  if (isSet){ b.textContent = '已登录'; b.className = 'badge ok'; }
+  else { b.textContent = '未登录'; b.className = 'badge bad'; }
+}
+
+/* ---------- 登录 ---------- */
+let loginTimer = null;
+let lastSeen = '';
+
+function setLoginStatus(text, kind){
+  const el = document.getElementById('loginStatus');
+  el.textContent = text || '';
+  el.className = 'msg' + (kind ? ' ' + kind : '');
+}
+
+function setLoginBusy(busy, showBar){
+  document.getElementById('loginBtn').disabled = busy;
+  document.getElementById('syncBtn').disabled = busy;
+  document.getElementById('loginBar').style.display = (busy && showBar) ? '' : 'none';
+}
+
+async function startLogin(interactive){
+  const { ok, status, data } = await api('/api/login/start', {
+    method:'POST', body: JSON.stringify({interactive: !!interactive})
+  });
+  if (!ok && status !== 202){
+    toast(data.message || '启动失败', 'err');
+    setLoginStatus(data.message || '启动失败', 'err');
+    return;
+  }
+  setLoginBusy(true, true);
+  setLoginStatus(interactive
+    ? '正在打开浏览器窗口，请在窗口里登录抖音…'
+    : '正在同步登录态，请稍候…');
+  pollLogin();
+}
+
+async function pollLogin(){
+  if (loginTimer) return;
+  const tick = async () => {
+    const { data } = await api('/api/login/status');
+    const st = data.status || 'idle';
+    const busy = (st === 'starting' || st === 'waiting_login' || st === 'reading');
+    if (data.message) lastSeen = data.message;
+    setLoginStatus(data.message || '', st === 'failed' ? 'err' : '');
+    setLoginBusy(busy, true);
+
+    if (busy) return;
+
+    clearInterval(loginTimer); loginTimer = null;
+
+    if (st === 'done'){
+      setCookieBadge(true);
+      setLoginStatus('✅ ' + (data.message || '登录成功') + '　可以开始下载了', '');
+      toast('登录成功', 'ok');
+    } else if (st === 'failed'){
+      setCookieBadge(false);
+      toast(data.message || '登录未完成', 'err');
+    }
+  };
+  loginTimer = setInterval(tick, 1200);
+  tick();
+}
+
+async function forgetLogin(){
+  if (!confirm('确定要退出登录吗？下次需要重新扫码登录。')) return;
+  const { data } = await api('/api/login/forget', {method:'POST'});
+  if (data.ok){
+    toast('已退出登录', 'ok');
+    setCookieBadge(false);
+    lastSeen = '';
+    setLoginStatus('尚未登录，请点「打开登录窗口」', '');
+  } else {
+    toast(data.message || '操作失败', 'err');
+  }
+}
+
+/* ---------- 下载 ---------- */
+function onModeChange(){
+  const m = document.getElementById('mode').value;
+  const show = m === 'post';
+  document.getElementById('maxCountsField').style.display = show ? '' : 'none';
+  document.getElementById('dateRow').style.display = show ? '' : 'none';
+}
+
+async function parseLink(){
+  const url = document.getElementById('urlInput').value.trim();
+  if (!url){ toast('请输入链接', 'err'); return; }
+  const { data } = await api('/api/parse', {method:'POST', body: JSON.stringify({url})});
+  if (data.ok){
+    const i = data.info;
+    // 顺便展示规范化后的地址：原链接里的 ?modal_id=xxx&type=general 等都会被抹掉
+    toast(`识别为：${i.kind === 'video' ? '单个作品' : '用户主页'} · ${i.url || i.id}`);
+  } else {
+    toast(data.message || '解析失败', 'err');
+  }
+}
+
+async function startDownload(){
+  const url = document.getElementById('urlInput').value.trim();
+  if (!url){ toast('请输入链接', 'err'); return; }
+
+  const payload = {
+    url,
+    mode: document.getElementById('mode').value,
+    max_counts: document.getElementById('maxCounts').value,
+    date_start: document.getElementById('dateStart').value,
+    date_end: document.getElementById('dateEnd').value,
+    force: document.getElementById('forceDl').checked,
+  };
+
+  const btn = document.getElementById('dlBtn');
+  btn.disabled = true;
+  const { data } = await api('/api/download', {method:'POST', body: JSON.stringify(payload)});
+  btn.disabled = false;
+
+  if (data.ok){
+    toast('任务已创建', 'ok');
+    refreshTasks();
+    startPolling();
+  } else {
+    toast(data.message || '创建任务失败', 'err');
+    if (data.need_login){
+      setLoginBusy(false, false);
+      setLoginStatus(data.message, 'err');
+      document.getElementById('loginBtn').scrollIntoView({behavior:'smooth', block:'center'});
+    }
+  }
+}
+
+async function resetHistory(){
+  if (!confirm('清空下载记录后，所有作品都会重新校验一遍：\n文件还在的会秒跳过（不重新下载），被删掉的会重新下载。\n\n确定要清空吗？')) return;
+  const { data } = await api('/api/reset-history', {method:'POST', body: JSON.stringify({})});
+  toast(data.message || (data.ok ? '下载记录已清空' : '操作失败'), data.ok ? 'ok' : 'err');
+}
+
+/* ---------- 任务列表 ---------- */
+async function refreshTasks(){
+  const { data } = await api('/api/tasks');
+  const box = document.getElementById('taskList');
+  const tasks = (data.tasks || []);
+  lastTasks = tasks;
+  if (!tasks.length){ box.innerHTML = '<div class="empty">暂无任务</div>'; return; }
+
+  box.innerHTML = tasks.map(t => {
+    const label = t.kind === 'post' ? '主页批量' : '单个作品';
+    const pct = t.total > 0 ? Math.min(100, Math.round(t.current / t.total * 100)) : (t.status==='done'?100:0);
+    let extra = '';
+    if (t.status === 'done' && t.result){
+      const r = t.result;
+      if (r.download_count != null){
+        const resumed = r.resumed && r.resumed.length ? `，其中 ${r.resumed.length} 条是文件丢失后补下` : '';
+        // 一条都没下成时，把原因说明白 —— 多半是日期区间把作品全筛掉了
+        let tail = '';
+        const nSkip = r.skipped ? r.skipped.length : 0;
+        const nFail = r.failed ? r.failed.length : 0;
+        if (r.download_count === 0 && nSkip === 0 && nFail === 0){
+          if (r.date_start || r.date_end){
+            const pages = r.pages_fetched ? `（已查 ${r.pages_fetched} 页）` : '';
+            tail = `。没有落在 ${r.date_start || '不限'} ~ ${r.date_end || '不限'} 区间内的作品${pages}`;
+          } else {
+            tail = '。没有找到可下载的作品';
+          }
+        }
+        extra = `<div class="msg">下载 ${r.download_count} 条，跳过 ${nSkip} 条` +
+                (nFail ? `，失败 ${nFail} 条` : '') + resumed + tail + `</div>`;
+      } else if (r.skipped){
+        // 真跳过：记录在案且文件此刻确实还在
+        const fname = String(r.path || '').split(/[\\/]/).pop();
+        extra = `<div class="msg">本地已存在，跳过下载${fname ? '：' + escapeHtml(fname) : ''}</div>`;
+      } else if (r.redownload && r.path){
+        extra = `<div class="msg warn">记录显示曾下载过，但文件已丢失，已重新下载：` +
+                `${escapeHtml(r.nickname||'')} ${escapeHtml((r.desc_full||r.desc||'').slice(0,36))}</div>`;
+      } else if (r.path){
+        extra = `<div class="msg">${escapeHtml(r.nickname||'')} ${escapeHtml((r.desc_full||r.desc||'').slice(0,40))}</div>`;
+      } else if (r.skipped === false && r.path === null){
+        extra = `<div class="msg warn">没有生成视频文件（可能为图文作品 / 已被屏蔽 / 私密）</div>`;
+      }
+    }
+    const err = t.error ? `<div class="msg err">${escapeHtml(t.error)}</div>` : '';
+    return `
+      <div class="task">
+        <div class="task-top">
+          <div>
+            <div class="task-name">${label} · ${escapeHtml(shortTarget(t.target))}</div>
+            <div class="task-meta">${t.current}/${t.total || '?'}</div>
+          </div>
+          <span class="tag ${t.status}">${statusText(t.status)}</span>
+        </div>
+        <div class="bar ${t.status==='done'?'done':''}"><i style="width:${pct}%"></i></div>
+        <div class="msg">${escapeHtml(t.message||'')}</div>
+        ${extra}${err}
+      </div>`;
+  }).join('');
+}
+
+function statusText(s){
+  return {pending:'排队中', running:'下载中', done:'已完成', failed:'失败', cancelled:'已取消'}[s] || s;
+}
+function escapeHtml(s){
+  return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+// 任务标题里只显示链接的关键部分，避免 "om/jingxuan?modal_id=..." 这种被截断的谜语
+function shortTarget(raw){
+  let s = String(raw||'').trim();
+  s = s.replace(/^https?:\/\/(www\.|m\.|v\.)?douyin\.com/i, '').replace(/^https?:\/\/(www\.)?iesdouyin\.com/i, '');
+  s = s.replace(/^\/+/, '');
+  return s.length > 48 ? '…' + s.slice(-48) : s;
+}
+
+function startPolling(){
+  if (pollTimer) return;
+  pollTimer = setInterval(refreshTasks, 1500);
+}
+
+async function openFolder(){
+  const { data } = await api('/api/open-folder', {method:'POST'});
+  if (!data.ok) toast(data.message || '打开失败', 'err');
+}
+
+/* ---------- 生命周期：关掉页面 = 程序退出 ----------
+   程序是无窗口的 exe，用户能看见的只有这个标签页。关掉它时后端收不到
+   任何信号，只能靠「心跳断掉」判断 —— 所以这里做两件事：
+     1) 定期心跳，证明「还有人看着」
+     2) 关闭时用 sendBeacon 主动上报，让退出更及时 */
+const HEARTBEAT_MS = 3000;
+
+function heartbeat(){
+  // keepalive：让请求在页面正在卸载时也能发出去
+  fetch('/api/heartbeat', {method:'POST', keepalive:true}).catch(()=>{});
+}
+
+// pagehide 在关闭 / 刷新 / 跳转时都会触发。
+// 刷新也会上报，所以后端留了 4 秒宽限期 ——
+// 刷新后新页面立刻发心跳，就把「待退出」取消了。
+let closingSent = false;
+window.addEventListener('pagehide', () => {
+  if (closingSent) return;
+  closingSent = true;
+  try {
+    navigator.sendBeacon('/api/closing', '1');
+  } catch(e){
+    fetch('/api/closing', {method:'POST', keepalive:true}).catch(()=>{});
+  }
+});
+
+// 回到前台 / 从后退缓存恢复时立刻补一次心跳。
+// 浏览器会节流甚至冻结后台标签页的定时器，醒过来必须马上报到，
+// 否则后端的「心跳断了」判断会误伤正在使用的实例。
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) heartbeat();
+});
+window.addEventListener('pageshow', heartbeat);
+
+// 有任务在跑时拦一下，避免手滑关掉页面把下载中断掉
+window.addEventListener('beforeunload', (e) => {
+  const busy = lastTasks.some(t => t.status === 'running' || t.status === 'pending');
+  if (!busy) return;
+  e.preventDefault();
+  e.returnValue = '';
+  return '';
+});
+
+/* ---------- 应用窗口（无边框）集成 ----------
+   同一个页面有两种宿主：系统浏览器，或应用自己的无边框窗口 ——
+   由 /api/alive 的 mode 字段说明是哪一种。只有后者需要自绘窗口按钮 +
+   把顶栏当拖动把手。窗口动作用 HTTP 接口而不是 pywebview 的 js_api，
+   原因见 src/win_window.py 里 minimize_window 上方的注释。 */
+let winChromeReady = false;
+function initWindowChrome(){
+  if (winChromeReady) return;
+  winChromeReady = true;
+  document.body.classList.add('in-app-window');
+  // 顶栏是拖动把手，但里面的按钮不能被当成把手 ——
+  // pywebview 从事件目标一路向上找拖动区，所以在按钮上掐断冒泡
+  document.querySelectorAll('header button, header a, header input, header select')
+    .forEach(el => el.addEventListener('mousedown', e => e.stopPropagation()));
+  // 页面刷新后窗口可能已经是最大化态，按钮图标要跟真实状态对上
+  api('/api/window/maximize').then(({data}) => {
+    if (data && typeof data.maximized === 'boolean') applyMaxState(data.maximized);
+  }).catch(()=>{});
+  // 双击顶栏切最大化/还原 —— Windows 的老习惯，顺手补上
+  const header = document.querySelector('header');
+  if (header) header.addEventListener('dblclick', e => {
+    if (e.target.closest('button, a, input, select')) return;
+    winToggleMax();
+  });
+}
+/* 最大化状态会同时影响三样东西：按钮图标、提示文字、顶栏还是不是拖动把手。
+   最大化时把拖动区摘掉 —— 否则拖顶栏会让 pywebview 去移动一个最大化窗口，
+   结果不确定。原生窗口这时应当是「还原并跟随鼠标」，那套要自己算位移，不值当。 */
+function applyMaxState(maximized){
+  document.body.classList.toggle('win-maximized', !!maximized);
+  const header = document.querySelector('header');
+  if (header) header.classList.toggle('pywebview-drag-region', !maximized);
+  const btn = document.getElementById('winMax');
+  if (btn) {
+    btn.title = maximized ? '还原' : '最大化';
+    btn.setAttribute('aria-label', btn.title);
+  }
+}
+function winMinimize(){
+  fetch('/api/window/minimize', {method:'POST'}).catch(()=>{});
+}
+function winToggleMax(){
+  api('/api/window/maximize', {method:'POST'}).then(({data}) => {
+    // 后端拿不到窗口时 maximized 为 null，那就别动图标，免得显示成反的
+    if (data && typeof data.maximized === 'boolean') applyMaxState(data.maximized);
+  }).catch(()=>{});
+}
+function winClose(){
+  // 自绘的关闭按钮不会走 beforeunload，所以那道「忙时确认」得在这里补一次，
+  // 否则正在下载时一点就把任务硬断了。
+  const busy = lastTasks.some(t => t.status === 'running' || t.status === 'pending');
+  if (busy && !confirm('还有下载任务正在进行，确定要关闭吗？')) return;
+  fetch('/api/window/close', {method:'POST', keepalive:true}).catch(()=>{});
+}
+api('/api/alive').then(({data}) => {
+  if (data && data.mode === 'window') initWindowChrome();
+}).catch(()=>{});
+
+/* ---------- 初始化 ---------- */
+heartbeat();
+setInterval(heartbeat, HEARTBEAT_MS);
+syncThemeBtn();
+loadConfig();
+refreshTasks();
+startPolling();
+</script>
+</body>
+</html>

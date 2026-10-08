@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "douyin-tool"
+version = "1.0.0"
+description = "本地运行的抖音视频下载工具"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "f2==0.0.1.7",
+    "flask==3.1.3",
+    "pyyaml==6.0.2",
+    "pywebview==6.2.1; sys_platform == 'win32'",
+    "websockets==12.0",
+]
+
+[project.optional-dependencies]
+dev = ["pyinstaller==6.22.3"]
+
+[project.scripts]
+douyin-tool = "douyin_tool.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+douyin_tool = ["web/templates/*.html", "web/static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
